@@ -66,6 +66,6 @@ void app_main(void)
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     zh_encoder_event_on_isr_t *event = event_data;
-    printf("Encoder number %d position %.2f.\n", event->encoder_number, event->encoder_position); // For ESP8266 first disable "Component config -> Newlib -> Enable ‘nano’ formatting options for printf/scanf family" via menuconfig.
+    printf("Encoder number %d position %0.2f.\n", event->encoder_number, event->encoder_position); // For ESP8266 first disable "Component config -> Newlib -> Enable ‘nano’ formatting options for printf/scanf family" via menuconfig.
 }
 ```
