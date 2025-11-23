@@ -1,3 +1,7 @@
+/**
+ * @file zh_encoder.h
+ */
+
 #pragma once
 
 #include "esp_log.h"
@@ -6,6 +10,9 @@
 #include "freertos/task.h"
 #include "esp_event.h"
 
+/**
+ * @brief Encoder initial default values.
+ */
 #define ZH_ENCODER_INIT_CONFIG_DEFAULT() \
     {                                    \
         .task_priority = 10,             \
@@ -23,38 +30,49 @@ extern "C"
 {
 #endif
 
-    typedef struct // Structure for initial initialization of encoder.
+    /**
+     * @brief Structure for initial initialization of encoder.
+     */
+    typedef struct
     {
-        uint8_t task_priority;     // Task priority for the encoder isr processing. @note It is not recommended to set a value less than 10.
-        uint16_t stack_size;       // Stack size for task for the encoder isr processing processing. @note The minimum size is 3072 bytes.
-        uint8_t queue_size;        // Queue size for task for the encoder processing. @note It is not recommended to set a value less than 10.
-        uint8_t a_gpio_number;     // Encoder A GPIO number.
-        uint8_t b_gpio_number;     // Encoder B GPIO number.
-        int32_t encoder_min_value; // Encoder min value. @note Must be less than encoder_max_value.
-        int32_t encoder_max_value; // Encoder max value. @note Must be greater than encoder_min_value.
-        double encoder_step;       // Encoder step. @note Must be greater than 0.
-        uint8_t encoder_number;    // Unique encoder number.
+        uint8_t task_priority;     /*!< Task priority for the encoder isr processing. @note It is not recommended to set a value less than 10. */
+        uint16_t stack_size;       /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is 3072 bytes. */
+        uint8_t queue_size;        /*!< Queue size for task for the encoder processing. @note It is not recommended to set a value less than 10. */
+        uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
+        uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
+        int32_t encoder_min_value; /*!< Encoder min value. @note Must be less than encoder_max_value. */
+        int32_t encoder_max_value; /*!< Encoder max value. @note Must be greater than encoder_min_value. */
+        double encoder_step;       /*!< Encoder step. @note Must be greater than 0. */
+        uint8_t encoder_number;    /*!< Unique encoder number. */
     } zh_encoder_init_config_t;
 
-    typedef struct // Encoder handle.
+    /**
+     * @brief Encoder handle.
+     */
+    typedef struct
     {
-        uint8_t a_gpio_number;     // Encoder A GPIO number.
-        uint8_t b_gpio_number;     // Encoder B GPIO number.
-        int32_t encoder_min_value; // Encoder min value.
-        int32_t encoder_max_value; // Encoder max value.
-        double encoder_step;       // Encoder step.
-        double encoder_position;   // Encoder position.
-        uint8_t encoder_number;    // Encoder unique number.
-        uint8_t encoder_state;     // Encoder internal state.
-        bool is_initialized;       // Encoder initialization flag.
+        uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
+        uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
+        int32_t encoder_min_value; /*!< Encoder min value. */
+        int32_t encoder_max_value; /*!< Encoder max value. */
+        double encoder_step;       /*!< Encoder step. */
+        double encoder_position;   /*!< Encoder position. */
+        uint8_t encoder_number;    /*!< Encoder unique number. */
+        uint8_t encoder_state;     /*!< Encoder internal state. */
+        bool is_initialized;       /*!< Encoder initialization flag. */
     } zh_encoder_handle_t;
 
     ESP_EVENT_DECLARE_BASE(ZH_ENCODER);
 
-    typedef struct // Structure for sending data to the event handler when cause an interrupt. @note Should be used with ZH_ENCODER event base.
+    /**
+     * @brief Structure for sending data to the event handler when cause an interrupt.
+     *
+     * @note Should be used with ZH_ENCODER event base.
+     */
+    typedef struct
     {
-        uint8_t encoder_number;  // Encoder unique number.
-        double encoder_position; // Encoder current position.
+        uint8_t encoder_number;  /*!< Encoder unique number. */
+        double encoder_position; /*!< Encoder current position. */
     } zh_encoder_event_on_isr_t;
 
     /**
