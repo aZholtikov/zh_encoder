@@ -26,6 +26,7 @@ static const uint8_t _encoder_matrix[7][4] = {
     {0x03, 0x05, 0x03, 0x00},
 };
 
+TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
 static bool _is_initialized = false;
 
@@ -152,7 +153,7 @@ static esp_err_t _zh_encoder_create_task(const zh_encoder_init_config_t *config)
             config->stack_size,
             NULL,
             config->task_priority,
-            NULL,
+            &zh_encoder,
             tskNO_AFFINITY);
         ZH_ENCODER_CHECK(err == pdPASS, ESP_FAIL, "Task creation failed.");
     }

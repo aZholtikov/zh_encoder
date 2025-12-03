@@ -30,6 +30,8 @@ extern "C"
 {
 #endif
 
+    extern TaskHandle_t zh_encoder; /*!< Unique encoder Task Handle. */
+
     /**
      * @brief Structure for initial initialization of encoder.
      */
