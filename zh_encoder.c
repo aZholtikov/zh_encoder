@@ -2,16 +2,15 @@
 
 #define TAG "zh_encoder"
 
-#define ZH_ENCODER_LOGI(msg, ...) ESP_LOGI(TAG, msg, ##__VA_ARGS__)
-#define ZH_ENCODER_LOGW(msg, ...) ESP_LOGW(TAG, msg, ##__VA_ARGS__)
-#define ZH_ENCODER_LOGE(msg, ...) ESP_LOGE(TAG, msg, ##__VA_ARGS__)
-#define ZH_ENCODER_LOGE_ERR(msg, err, ...) ESP_LOGE(TAG, "[%s:%d:%s] " msg, __FILE__, __LINE__, esp_err_to_name(err), ##__VA_ARGS__)
+#define ZH_LOGI(msg, ...) ESP_LOGI(TAG, msg, ##__VA_ARGS__)
+#define ZH_LOGE(msg, err, ...) ESP_LOGE(TAG, "[%s:%d:%s] " msg, __FILE__, __LINE__, esp_err_to_name(err), ##__VA_ARGS__)
 
-#define ZH_ENCODER_CHECK(cond, err, msg, ...) \
-    if (!(cond))                              \
-    {                                         \
-        ZH_ENCODER_LOGE_ERR(msg, err);        \
-        return err;                           \
+#define ZH_ERROR_CHECK(cond, err, cleanup, msg, ...) \
+    if (!(cond))                                     \
+    {                                                \
+        ZH_LOGE(msg, err, ##__VA_ARGS__);            \
+        cleanup;                                     \
+        return err;                                  \
     }
 
 #define ZH_ENCODER_DIRECTION_CW 0x10
@@ -42,84 +41,84 @@ ESP_EVENT_DEFINE_BASE(ZH_ENCODER);
 
 esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
-    ZH_ENCODER_LOGI("Encoder initialization started.");
+    ZH_LOGI("Encoder initialization started.");
     esp_err_t err = _zh_encoder_validate_config(config);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "Encoder initialization failed. Initial configuration check failed.");
-    ZH_ENCODER_LOGI("Encoder initial configuration check completed successfully.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Initial configuration check failed.");
+    ZH_LOGI("Encoder initial configuration check completed successfully.");
     handle->encoder_number = config->encoder_number;
     handle->encoder_min_value = config->encoder_min_value;
     handle->encoder_max_value = config->encoder_max_value;
     handle->encoder_step = config->encoder_step;
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
     err = _zh_encoder_gpio_init(config);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "Encoder initialization failed. GPIO initialization failed.");
-    ZH_ENCODER_LOGI("Encoder GPIO initialization completed successfully.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. GPIO initialization failed.");
+    ZH_LOGI("Encoder GPIO initialization completed successfully.");
     handle->a_gpio_number = config->a_gpio_number;
     handle->b_gpio_number = config->b_gpio_number;
     err = _zh_encoder_configure_interrupts(config, handle);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "Encoder initialization failed. Interrupt initialization failed.");
-    ZH_ENCODER_LOGI("Encoder interrupt initialization completed successfully.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Interrupt initialization failed.");
+    ZH_LOGI("Encoder interrupt initialization completed successfully.");
     err = _zh_encoder_init_resources(config);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "Encoder initialization failed. Resources initialization failed.");
-    ZH_ENCODER_LOGI("Encoder resources initialization completed successfully.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Resources initialization failed.");
+    ZH_LOGI("Encoder resources initialization completed successfully.");
     err = _zh_encoder_create_task(config);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "Encoder initialization failed. Processing task initialization failed.");
-    ZH_ENCODER_LOGI("Encoder processing task initialization completed successfully.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Processing task initialization failed.");
+    ZH_LOGI("Encoder processing task initialization completed successfully.");
     handle->is_initialized = true;
     _is_initialized = true;
-    ZH_ENCODER_LOGI("Encoder initialization completed successfully.");
+    ZH_LOGI("Encoder initialization completed successfully.");
     return ESP_OK;
 }
 
 esp_err_t zh_encoder_set(zh_encoder_handle_t *handle, double position)
 {
-    ZH_ENCODER_LOGI("Encoder set position started.");
-    ZH_ENCODER_CHECK(handle->is_initialized == true, ESP_FAIL, "Encoder set position failed. Encoder not initialized.");
-    ZH_ENCODER_CHECK(position <= handle->encoder_max_value && position >= handle->encoder_min_value, ESP_ERR_INVALID_ARG, "Encoder set position failed. Invalid argument.");
+    ZH_LOGI("Encoder set position started.");
+    ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder set position failed. Encoder not initialized.");
+    ZH_ERROR_CHECK(position <= handle->encoder_max_value && position >= handle->encoder_min_value, ESP_ERR_INVALID_ARG, NULL, "Encoder set position failed. Invalid argument.");
     handle->encoder_position = position;
-    ZH_ENCODER_LOGI("Encoder set position completed successfully.");
+    ZH_LOGI("Encoder set position completed successfully.");
     return ESP_OK;
 }
 
 esp_err_t zh_encoder_get(const zh_encoder_handle_t *handle, double *position)
 {
-    ZH_ENCODER_LOGI("Encoder get position started.");
-    ZH_ENCODER_CHECK(handle->is_initialized == true, ESP_FAIL, "Encoder get position failed. Encoder not initialized.");
+    ZH_LOGI("Encoder get position started.");
+    ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder get position failed. Encoder not initialized.");
     *position = handle->encoder_position;
-    ZH_ENCODER_LOGI("Encoder get position completed successfully.");
+    ZH_LOGI("Encoder get position completed successfully.");
     return ESP_OK;
 }
 
 esp_err_t zh_encoder_reset(zh_encoder_handle_t *handle)
 {
-    ZH_ENCODER_LOGI("Encoder reset started.");
-    ZH_ENCODER_CHECK(handle->is_initialized == true, ESP_FAIL, "Encoder reset failed. Encoder not initialized.");
+    ZH_LOGI("Encoder reset started.");
+    ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder reset failed. Encoder not initialized.");
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
-    ZH_ENCODER_LOGI("Encoder reset completed successfully.");
+    ZH_LOGI("Encoder reset completed successfully.");
     return ESP_OK;
 }
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config)
 {
-    ZH_ENCODER_CHECK(config != NULL, ESP_ERR_INVALID_ARG, "Invalid configuration.");
-    ZH_ENCODER_CHECK(config->task_priority >= 10 && config->stack_size >= 3072, ESP_ERR_INVALID_ARG, "Invalid task settings.");
-    ZH_ENCODER_CHECK(config->queue_size >= 10, ESP_ERR_INVALID_ARG, "Invalid queue size.");
-    ZH_ENCODER_CHECK(config->encoder_max_value > config->encoder_min_value, ESP_ERR_INVALID_ARG, "Invalid encoder min/max value.");
-    ZH_ENCODER_CHECK(config->encoder_step > 0, ESP_ERR_INVALID_ARG, "Invalid encoder step.");
+    ZH_ERROR_CHECK(config != NULL, ESP_ERR_INVALID_ARG, NULL, "Invalid configuration.");
+    ZH_ERROR_CHECK(config->task_priority >= 10 && config->stack_size >= 3072, ESP_ERR_INVALID_ARG, NULL, "Invalid task settings.");
+    ZH_ERROR_CHECK(config->queue_size >= 10, ESP_ERR_INVALID_ARG, NULL, "Invalid queue size.");
+    ZH_ERROR_CHECK(config->encoder_max_value > config->encoder_min_value, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder min/max value.");
+    ZH_ERROR_CHECK(config->encoder_step > 0, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder step.");
     return ESP_OK;
 }
 
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config)
 {
-    ZH_ENCODER_CHECK(config->a_gpio_number < GPIO_NUM_MAX || config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, "Invalid GPIO number.")
-    ZH_ENCODER_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, "Invalid GPIO number.")
+    ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX || config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
+    ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
     gpio_config_t pin_config = {
         .mode = GPIO_MODE_INPUT,
         .pin_bit_mask = (1ULL << config->a_gpio_number) | (1ULL << config->b_gpio_number),
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .intr_type = GPIO_INTR_ANYEDGE};
     esp_err_t err = gpio_config(&pin_config);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "GPIO initialization failed.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "GPIO initialization failed.");
     return ESP_OK;
 }
 
@@ -127,9 +126,9 @@ static esp_err_t _zh_encoder_configure_interrupts(const zh_encoder_init_config_t
 {
     gpio_install_isr_service(0);
     esp_err_t err = gpio_isr_handler_add(config->a_gpio_number, _zh_encoder_isr_handler, handle);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "Interrupt initialization failed.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Interrupt initialization failed.");
     err = gpio_isr_handler_add(config->b_gpio_number, _zh_encoder_isr_handler, handle);
-    ZH_ENCODER_CHECK(err == ESP_OK, err, "Interrupt initialization failed.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Interrupt initialization failed.");
     return ESP_OK;
 }
 
@@ -138,7 +137,7 @@ static esp_err_t _zh_encoder_init_resources(const zh_encoder_init_config_t *conf
     if (_is_initialized == false)
     {
         _queue_handle = xQueueCreate(config->queue_size, sizeof(zh_encoder_handle_t));
-        ZH_ENCODER_CHECK(_queue_handle != NULL, ESP_FAIL, "Queue creation failed.");
+        ZH_ERROR_CHECK(_queue_handle != NULL, ESP_FAIL, NULL, "Queue creation failed.");
     }
     return ESP_OK;
 }
@@ -155,7 +154,7 @@ static esp_err_t _zh_encoder_create_task(const zh_encoder_init_config_t *config)
             config->task_priority,
             &zh_encoder,
             tskNO_AFFINITY);
-        ZH_ENCODER_CHECK(err == pdPASS, ESP_FAIL, "Task creation failed.");
+        ZH_ERROR_CHECK(err == pdPASS, ESP_FAIL, NULL, "Task creation failed.");
     }
     return ESP_OK;
 }
@@ -205,15 +204,15 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
     zh_encoder_event_on_isr_t encoder_data = {0};
     while (xQueueReceive(_queue_handle, &queue, portMAX_DELAY) == pdTRUE)
     {
-        ZH_ENCODER_LOGI("Encoder isr processing begin.");
+        ZH_LOGI("Encoder isr processing begin.");
         encoder_data.encoder_number = queue.encoder_number;
         encoder_data.encoder_position = queue.encoder_position;
         esp_err_t err = esp_event_post(ZH_ENCODER, 0, &encoder_data, sizeof(zh_encoder_event_on_isr_t), portTICK_PERIOD_MS);
         if (err != ESP_OK)
         {
-            ZH_ENCODER_LOGE_ERR("Encoder isr processing failed. Failed to post interrupt event.", err);
+            ZH_LOGE("Encoder isr processing failed. Failed to post interrupt event.", err);
         }
-        ZH_ENCODER_LOGI("Encoder isr processing completed successfully.");
+        ZH_LOGI("Encoder isr processing completed successfully.");
     }
     vTaskDelete(NULL);
 }
