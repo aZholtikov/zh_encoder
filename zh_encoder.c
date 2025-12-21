@@ -30,10 +30,9 @@ static QueueHandle_t _queue_handle = NULL;
 static bool _is_initialized = false;
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config);
-static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config);
-static esp_err_t _zh_encoder_configure_interrupts(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
-static esp_err_t _zh_encoder_init_resources(const zh_encoder_init_config_t *config);
-static esp_err_t _zh_encoder_create_task(const zh_encoder_init_config_t *config);
+static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
+static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *config);
+static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config);
 static void _zh_encoder_isr_handler(void *arg);
 static void _zh_encoder_isr_processing_task(void *pvParameter);
 
@@ -44,26 +43,19 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     ZH_LOGI("Encoder initialization started.");
     esp_err_t err = _zh_encoder_validate_config(config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Initial configuration check failed.");
-    ZH_LOGI("Encoder initial configuration check completed successfully.");
     handle->encoder_number = config->encoder_number;
     handle->encoder_min_value = config->encoder_min_value;
     handle->encoder_max_value = config->encoder_max_value;
     handle->encoder_step = config->encoder_step;
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
-    err = _zh_encoder_gpio_init(config);
+    err = _zh_encoder_gpio_init(config, handle);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. GPIO initialization failed.");
-    ZH_LOGI("Encoder GPIO initialization completed successfully.");
     handle->a_gpio_number = config->a_gpio_number;
     handle->b_gpio_number = config->b_gpio_number;
-    err = _zh_encoder_configure_interrupts(config, handle);
-    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Interrupt initialization failed.");
-    ZH_LOGI("Encoder interrupt initialization completed successfully.");
-    err = _zh_encoder_init_resources(config);
+    err = _zh_encoder_resources_init(config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Resources initialization failed.");
-    ZH_LOGI("Encoder resources initialization completed successfully.");
-    err = _zh_encoder_create_task(config);
+    err = _zh_encoder_task_init(config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Processing task initialization failed.");
-    ZH_LOGI("Encoder processing task initialization completed successfully.");
     handle->is_initialized = true;
     _is_initialized = true;
     ZH_LOGI("Encoder initialization completed successfully.");
@@ -108,7 +100,7 @@ static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *con
     return ESP_OK;
 }
 
-static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config)
+static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
     ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX || config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
     ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
@@ -119,42 +111,30 @@ static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config)
         .intr_type = GPIO_INTR_ANYEDGE};
     esp_err_t err = gpio_config(&pin_config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "GPIO initialization failed.");
-    return ESP_OK;
-}
-
-static esp_err_t _zh_encoder_configure_interrupts(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
-{
     gpio_install_isr_service(0);
-    esp_err_t err = gpio_isr_handler_add(config->a_gpio_number, _zh_encoder_isr_handler, handle);
+    err = gpio_isr_handler_add(config->a_gpio_number, _zh_encoder_isr_handler, handle);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Interrupt initialization failed.");
     err = gpio_isr_handler_add(config->b_gpio_number, _zh_encoder_isr_handler, handle);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Interrupt initialization failed.");
     return ESP_OK;
 }
 
-static esp_err_t _zh_encoder_init_resources(const zh_encoder_init_config_t *config)
+static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *config)
 {
     if (_is_initialized == false)
     {
         _queue_handle = xQueueCreate(config->queue_size, sizeof(zh_encoder_handle_t));
-        ZH_ERROR_CHECK(_queue_handle != NULL, ESP_FAIL, NULL, "Queue creation failed.");
+        ZH_ERROR_CHECK(_queue_handle != NULL, ESP_FAIL, NULL, "Failed to create queue.");
     }
     return ESP_OK;
 }
 
-static esp_err_t _zh_encoder_create_task(const zh_encoder_init_config_t *config)
+static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config)
 {
     if (_is_initialized == false)
     {
-        BaseType_t err = xTaskCreatePinnedToCore(
-            &_zh_encoder_isr_processing_task,
-            "zh_encoder_isr_processing",
-            config->stack_size,
-            NULL,
-            config->task_priority,
-            &zh_encoder,
-            tskNO_AFFINITY);
-        ZH_ERROR_CHECK(err == pdPASS, ESP_FAIL, NULL, "Task creation failed.");
+        BaseType_t err = xTaskCreatePinnedToCore(&_zh_encoder_isr_processing_task, "zh_encoder_isr_processing", config->stack_size, NULL, config->task_priority, &zh_encoder, tskNO_AFFINITY);
+        ZH_ERROR_CHECK(err == pdPASS, ESP_FAIL, NULL, "Failed to create isr processing task.");
     }
     return ESP_OK;
 }
@@ -163,8 +143,7 @@ static void IRAM_ATTR _zh_encoder_isr_handler(void *arg)
 {
     zh_encoder_handle_t *encoder_handle = (zh_encoder_handle_t *)arg;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    encoder_handle->encoder_state = _encoder_matrix[encoder_handle->encoder_state & 0x0F]
-                                                   [(gpio_get_level(encoder_handle->b_gpio_number) << 1) | gpio_get_level(encoder_handle->a_gpio_number)];
+    encoder_handle->encoder_state = _encoder_matrix[encoder_handle->encoder_state & 0x0F][(gpio_get_level(encoder_handle->b_gpio_number) << 1) | gpio_get_level(encoder_handle->a_gpio_number)];
     switch (encoder_handle->encoder_state & 0x30)
     {
     case ZH_ENCODER_DIRECTION_CW:
@@ -204,15 +183,13 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
     zh_encoder_event_on_isr_t encoder_data = {0};
     while (xQueueReceive(_queue_handle, &queue, portMAX_DELAY) == pdTRUE)
     {
-        ZH_LOGI("Encoder isr processing begin.");
         encoder_data.encoder_number = queue.encoder_number;
         encoder_data.encoder_position = queue.encoder_position;
-        esp_err_t err = esp_event_post(ZH_ENCODER, 0, &encoder_data, sizeof(zh_encoder_event_on_isr_t), portTICK_PERIOD_MS);
+        esp_err_t err = esp_event_post(ZH_ENCODER, 0, &encoder_data, sizeof(zh_encoder_event_on_isr_t), 1000 / portTICK_PERIOD_MS);
         if (err != ESP_OK)
         {
             ZH_LOGE("Encoder isr processing failed. Failed to post interrupt event.", err);
         }
-        ZH_LOGI("Encoder isr processing completed successfully.");
     }
     vTaskDelete(NULL);
 }
