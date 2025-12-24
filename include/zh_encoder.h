@@ -104,6 +104,13 @@ extern "C"
     esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
 
     /**
+     * @brief Deinitialize encoder.
+     *
+     * @return ESP_OK if success or an error code otherwise.
+     */
+    esp_err_t zh_encoder_deinit(zh_encoder_handle_t *handle);
+
+    /**
      * @brief Set encoder position.
      *
      * @param[in, out] handle Pointer to unique encoder handle.

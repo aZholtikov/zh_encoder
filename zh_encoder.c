@@ -27,7 +27,7 @@ static const uint8_t _encoder_matrix[7][4] = {
 
 TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
-static bool _is_initialized = false;
+static uint8_t _encoder_counter = 0;
 static bool _is_prev_gpio_isr_handler = false;
 static zh_encoder_stats_t _stats = {0};
 
@@ -78,8 +78,32 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     handle->encoder_step = config->encoder_step;
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
     handle->is_initialized = true;
-    _is_initialized = true;
+    ++_encoder_counter;
     ZH_LOGI("Encoder initialization completed successfully.");
+    return ESP_OK;
+}
+
+esp_err_t zh_encoder_deinit(zh_encoder_handle_t *handle)
+{
+    ZH_LOGI("Encoder deinitialization started.");
+    ZH_ERROR_CHECK(handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder deinitialization failed. Invalid argument.");
+    ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder deinitialization failed. Encoder not initialized.");
+    gpio_isr_handler_remove((gpio_num_t)handle->a_gpio_number);
+    gpio_isr_handler_remove((gpio_num_t)handle->b_gpio_number);
+    gpio_reset_pin((gpio_num_t)handle->a_gpio_number);
+    gpio_reset_pin((gpio_num_t)handle->b_gpio_number);
+    if (_encoder_counter == 1)
+    {
+        vQueueDelete(_queue_handle);
+        vTaskDelete(zh_encoder);
+        if (_is_prev_gpio_isr_handler == false)
+        {
+            gpio_uninstall_isr_service();
+        }
+    }
+    handle->is_initialized = false;
+    --_encoder_counter;
+    ZH_LOGI("Encoder deinitialization completed successfully.");
     return ESP_OK;
 }
 
@@ -149,7 +173,7 @@ static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, z
         .intr_type = GPIO_INTR_ANYEDGE};
     esp_err_t err = gpio_config(&pin_config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "GPIO initialization failed.");
-    if (_is_initialized == false)
+    if (_encoder_counter == 0)
     {
         err = gpio_install_isr_service(ESP_INTR_FLAG_LOWMED);
         ZH_ERROR_CHECK(err == ESP_OK || err == ESP_ERR_INVALID_STATE, err, gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Failed install isr service.");
@@ -174,7 +198,7 @@ static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, z
 
 static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *config)
 {
-    if (_is_initialized == false)
+    if (_encoder_counter == 0)
     {
         _queue_handle = xQueueCreate(config->queue_size, sizeof(zh_encoder_handle_t));
         ZH_ERROR_CHECK(_queue_handle != NULL, ESP_FAIL, NULL, "Failed to create queue.");
@@ -184,7 +208,7 @@ static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *conf
 
 static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config)
 {
-    if (_is_initialized == false)
+    if (_encoder_counter == 0)
     {
         BaseType_t err = xTaskCreatePinnedToCore(&_zh_encoder_isr_processing_task, "zh_encoder_isr_processing", config->stack_size, NULL, config->task_priority, &zh_encoder, tskNO_AFFINITY);
         ZH_ERROR_CHECK(err == pdPASS, ESP_FAIL, NULL, "Failed to create isr processing task.");
