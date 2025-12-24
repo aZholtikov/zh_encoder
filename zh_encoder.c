@@ -28,6 +28,7 @@ static const uint8_t _encoder_matrix[7][4] = {
 TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
 static bool _is_initialized = false;
+static bool _is_prev_gpio_isr_handler = false;
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config);
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
@@ -43,19 +44,37 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     ZH_LOGI("Encoder initialization started.");
     esp_err_t err = _zh_encoder_validate_config(config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Initial configuration check failed.");
+    err = _zh_encoder_gpio_init(config, handle);
+    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. GPIO initialization failed.");
+    err = _zh_encoder_resources_init(config);
+    if (_is_prev_gpio_isr_handler == true)
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_reset_pin((gpio_num_t)config->a_gpio_number);
+                       gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+    }
+    else
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_uninstall_isr_service();
+                       gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+    }
+    err = _zh_encoder_task_init(config);
+    if (_is_prev_gpio_isr_handler == true)
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, vQueueDelete(_queue_handle); _queue_handle = NULL; gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number);
+                       gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Processing task initialization failed.");
+    }
+    else
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, vQueueDelete(_queue_handle); _queue_handle = NULL; gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number);
+                       gpio_uninstall_isr_service(); gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Processing task initialization failed.");
+    }
+    handle->a_gpio_number = config->a_gpio_number;
+    handle->b_gpio_number = config->b_gpio_number;
     handle->encoder_number = config->encoder_number;
     handle->encoder_min_value = config->encoder_min_value;
     handle->encoder_max_value = config->encoder_max_value;
     handle->encoder_step = config->encoder_step;
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
-    err = _zh_encoder_gpio_init(config, handle);
-    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. GPIO initialization failed.");
-    handle->a_gpio_number = config->a_gpio_number;
-    handle->b_gpio_number = config->b_gpio_number;
-    err = _zh_encoder_resources_init(config);
-    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Resources initialization failed.");
-    err = _zh_encoder_task_init(config);
-    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Processing task initialization failed.");
     handle->is_initialized = true;
     _is_initialized = true;
     ZH_LOGI("Encoder initialization completed successfully.");
@@ -102,8 +121,8 @@ static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *con
 
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
-    ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX || config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
-    ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
+    ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX && config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
+    ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Both GPIO is same.")
     gpio_config_t pin_config = {
         .mode = GPIO_MODE_INPUT,
         .pin_bit_mask = (1ULL << config->a_gpio_number) | (1ULL << config->b_gpio_number),
@@ -111,11 +130,26 @@ static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, z
         .intr_type = GPIO_INTR_ANYEDGE};
     esp_err_t err = gpio_config(&pin_config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "GPIO initialization failed.");
-    gpio_install_isr_service(0);
+    if (_is_initialized == false)
+    {
+        err = gpio_install_isr_service(ESP_INTR_FLAG_LOWMED);
+        ZH_ERROR_CHECK(err == ESP_OK || err == ESP_ERR_INVALID_STATE, err, gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Failed install isr service.");
+        if (err == ESP_ERR_INVALID_STATE)
+        {
+            _is_prev_gpio_isr_handler = true;
+        }
+    }
     err = gpio_isr_handler_add(config->a_gpio_number, _zh_encoder_isr_handler, handle);
-    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Interrupt initialization failed.");
+    ZH_ERROR_CHECK(err == ESP_OK, err, gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Interrupt initialization failed.");
     err = gpio_isr_handler_add(config->b_gpio_number, _zh_encoder_isr_handler, handle);
-    ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Interrupt initialization failed.");
+    if (_is_prev_gpio_isr_handler == true)
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Interrupt initialization failed.");
+    }
+    else
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_uninstall_isr_service(); gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Interrupt initialization failed.");
+    }
     return ESP_OK;
 }
 
