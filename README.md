@@ -40,8 +40,11 @@ void app_main(void)
     esp_event_loop_create_default();
     esp_event_handler_instance_register(ZH_ENCODER, ESP_EVENT_ANY_ID, &zh_encoder_event_handler, NULL, NULL);
     zh_encoder_init_config_t encoder_init_config = ZH_ENCODER_INIT_CONFIG_DEFAULT();
-    encoder_init_config.a_gpio_number = GPIO_NUM_26;
-    encoder_init_config.b_gpio_number = GPIO_NUM_27;
+    encoder_init_config.task_priority = 5;
+    encoder_init_config.stack_size = configMINIMAL_STACK_SIZE;
+    encoder_init_config.queue_size = 3;
+    encoder_init_config.a_gpio_number = GPIO_NUM_27;
+    encoder_init_config.b_gpio_number = GPIO_NUM_26;
     encoder_init_config.encoder_min_value = -10;
     encoder_init_config.encoder_max_value = 20;
     encoder_init_config.encoder_step = 0.1;
