@@ -13,16 +13,16 @@
 /**
  * @brief Encoder initial default values.
  */
-#define ZH_ENCODER_INIT_CONFIG_DEFAULT() \
-    {                                    \
-        .task_priority = 10,             \
-        .stack_size = 3072,              \
-        .queue_size = 10,                \
-        .a_gpio_number = 0,              \
-        .b_gpio_number = 0,              \
-        .encoder_min_value = -100,       \
-        .encoder_max_value = 100,        \
-        .encoder_step = 1,               \
+#define ZH_ENCODER_INIT_CONFIG_DEFAULT()        \
+    {                                           \
+        .task_priority = 1,                     \
+        .stack_size = configMINIMAL_STACK_SIZE, \
+        .queue_size = 1,                        \
+        .a_gpio_number = GPIO_NUM_MAX,          \
+        .b_gpio_number = GPIO_NUM_MAX,          \
+        .encoder_min_value = -100,              \
+        .encoder_max_value = 100,               \
+        .encoder_step = 1,                      \
         .encoder_number = 0}
 
 #ifdef __cplusplus
@@ -37,9 +37,9 @@ extern "C"
      */
     typedef struct
     {
-        uint8_t task_priority;     /*!< Task priority for the encoder isr processing. @note It is not recommended to set a value less than 10. */
-        uint16_t stack_size;       /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is 3072 bytes. */
-        uint8_t queue_size;        /*!< Queue size for task for the encoder processing. @note It is not recommended to set a value less than 10. */
+        uint8_t task_priority;     /*!< Task priority for the encoder isr processing. @note Minimum value is 1. */
+        uint16_t stack_size;       /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
+        uint8_t queue_size;        /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
         uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
         uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
         int32_t encoder_min_value; /*!< Encoder min value. @note Must be less than encoder_max_value. */

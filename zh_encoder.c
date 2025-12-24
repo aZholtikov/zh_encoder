@@ -127,8 +127,8 @@ void zh_encoder_reset_stats(void)
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config)
 {
     ZH_ERROR_CHECK(config != NULL, ESP_ERR_INVALID_ARG, NULL, "Invalid configuration.");
-    ZH_ERROR_CHECK(config->task_priority >= 10 && config->stack_size >= 3072, ESP_ERR_INVALID_ARG, NULL, "Invalid task settings.");
-    ZH_ERROR_CHECK(config->queue_size >= 10, ESP_ERR_INVALID_ARG, NULL, "Invalid queue size.");
+    ZH_ERROR_CHECK(config->task_priority >= 1 && config->stack_size >= configMINIMAL_STACK_SIZE, ESP_ERR_INVALID_ARG, NULL, "Invalid task settings.");
+    ZH_ERROR_CHECK(config->queue_size >= 1, ESP_ERR_INVALID_ARG, NULL, "Invalid queue size.");
     ZH_ERROR_CHECK(config->encoder_max_value > config->encoder_min_value, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder min/max value.");
     ZH_ERROR_CHECK(config->encoder_step > 0, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder step.");
     return ESP_OK;
