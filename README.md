@@ -61,6 +61,14 @@ void app_main(void)
     printf("Encoder position %0.2f.\n", position); // For ESP8266 first disable "Component config -> Newlib -> Enable ‘nano’ formatting options for printf/scanf family" via menuconfig.
     // zh_encoder_set(&encoder_handle, 5); // Just for example.
     // zh_encoder_reset(&encoder_handle);  // Just for example.
+    for (;;)
+    {
+        const zh_encoder_stats_t *stats = zh_encoder_get_stats();
+        printf("Number of event post error: %ld.\n", stats->event_post_error);
+        printf("Number of queue overflow error: %ld.\n", stats->queue_overflow_error);
+        printf("Minimum free stack size: %ld.\n", stats->min_stack_size);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+    }
 }
 
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)

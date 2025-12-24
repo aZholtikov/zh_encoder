@@ -29,6 +29,7 @@ TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
 static bool _is_initialized = false;
 static bool _is_prev_gpio_isr_handler = false;
+static zh_encoder_stats_t _stats = {0};
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config);
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
@@ -107,6 +108,20 @@ esp_err_t zh_encoder_reset(zh_encoder_handle_t *handle)
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
     ZH_LOGI("Encoder reset completed successfully.");
     return ESP_OK;
+}
+
+const zh_encoder_stats_t *zh_encoder_get_stats(void)
+{
+    return &_stats;
+}
+
+void zh_encoder_reset_stats(void)
+{
+    ZH_LOGI("Error statistic reset started.");
+    _stats.event_post_error = 0;
+    _stats.queue_overflow_error = 0;
+    _stats.min_stack_size = 0;
+    ZH_LOGI("Error statistic reset successfully.");
 }
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config)
@@ -188,7 +203,10 @@ static void IRAM_ATTR _zh_encoder_isr_handler(void *arg)
             {
                 encoder_handle->encoder_position = encoder_handle->encoder_max_value;
             }
-            xQueueSendFromISR(_queue_handle, encoder_handle, &xHigherPriorityTaskWoken);
+            if (xQueueSendFromISR(_queue_handle, encoder_handle, &xHigherPriorityTaskWoken) != pdTRUE)
+            {
+                ++_stats.queue_overflow_error;
+            }
         }
         break;
     case ZH_ENCODER_DIRECTION_CCW:
@@ -199,7 +217,10 @@ static void IRAM_ATTR _zh_encoder_isr_handler(void *arg)
             {
                 encoder_handle->encoder_position = encoder_handle->encoder_min_value;
             }
-            xQueueSendFromISR(_queue_handle, encoder_handle, &xHigherPriorityTaskWoken);
+            if (xQueueSendFromISR(_queue_handle, encoder_handle, &xHigherPriorityTaskWoken) != pdTRUE)
+            {
+                ++_stats.queue_overflow_error;
+            }
         }
         break;
     default:
@@ -222,8 +243,10 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
         esp_err_t err = esp_event_post(ZH_ENCODER, 0, &encoder_data, sizeof(zh_encoder_event_on_isr_t), 1000 / portTICK_PERIOD_MS);
         if (err != ESP_OK)
         {
+            ++_stats.event_post_error;
             ZH_LOGE("Encoder isr processing failed. Failed to post interrupt event.", err);
         }
+        _stats.min_stack_size = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
     }
     vTaskDelete(NULL);
 }

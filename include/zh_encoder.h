@@ -64,6 +64,16 @@ extern "C"
         bool is_initialized;       /*!< Encoder initialization flag. */
     } zh_encoder_handle_t;
 
+    /**
+     * @brief Structure for error statistics storage.
+     */
+    typedef struct
+    {
+        uint32_t event_post_error;     /*!< Number of event post error. */
+        uint32_t queue_overflow_error; /*!< Number of queue overflow error. */
+        uint32_t min_stack_size;       /*!< Minimum free stack size. */
+    } zh_encoder_stats_t;
+
     ESP_EVENT_DECLARE_BASE(ZH_ENCODER);
 
     /**
@@ -123,6 +133,18 @@ extern "C"
      * @return ESP_OK if success or an error code otherwise.
      */
     esp_err_t zh_encoder_reset(zh_encoder_handle_t *handle);
+
+    /**
+     * @brief Get error statistics.
+     *
+     * @return Pointer to the statistics structure.
+     */
+    const zh_encoder_stats_t *zh_encoder_get_stats(void);
+
+    /**
+     * @brief Reset error statistics.
+     */
+    void zh_encoder_reset_stats(void);
 
 #ifdef __cplusplus
 }
