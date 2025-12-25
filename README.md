@@ -8,6 +8,10 @@
 
 1. Support some encoders on one device.
 
+## Attention
+
+1. If the button is not used, specify any free GPIO in the initial configuration.
+
 ## Using
 
 In an existing project, run the following command to install the components:
@@ -30,7 +34,11 @@ One encoder on device:
 ```c
 #include "zh_encoder.h"
 
+#define ENCODER_NUMBER 0x01
+
 zh_encoder_handle_t encoder_handle = {0};
+
+double encoder_position = 0;
 
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
@@ -42,19 +50,17 @@ void app_main(void)
     zh_encoder_init_config_t encoder_init_config = ZH_ENCODER_INIT_CONFIG_DEFAULT();
     encoder_init_config.task_priority = 5;
     encoder_init_config.stack_size = configMINIMAL_STACK_SIZE;
-    encoder_init_config.queue_size = 3;
+    encoder_init_config.queue_size = 5;
     encoder_init_config.a_gpio_number = GPIO_NUM_27;
     encoder_init_config.b_gpio_number = GPIO_NUM_26;
-    encoder_init_config.encoder_min_value = -10;
-    encoder_init_config.encoder_max_value = 20;
+    encoder_init_config.s_gpio_number = GPIO_NUM_17;
+    encoder_init_config.encoder_min_value = 0;
+    encoder_init_config.encoder_max_value = 100;
     encoder_init_config.encoder_step = 0.1;
-    encoder_init_config.encoder_number = 1;
+    encoder_init_config.encoder_number = ENCODER_NUMBER;
     zh_encoder_init(&encoder_init_config, &encoder_handle);
-    double position = 0;
-    zh_encoder_get(&encoder_handle, &position);
-    printf("Encoder position %0.2f.\n", position);
-    zh_encoder_set(&encoder_handle, 5);
-    zh_encoder_reset(&encoder_handle);
+    zh_encoder_get(&encoder_handle, &encoder_position);
+    printf("Encoder position %0.2f.\n", encoder_position);
     for (;;)
     {
         const zh_encoder_stats_t *stats = zh_encoder_get_stats();
@@ -68,6 +74,21 @@ void app_main(void)
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     zh_encoder_event_on_isr_t *event = event_data;
-    printf("Encoder number %d position %0.2f.\n", event->encoder_number, event->encoder_position);
+    switch (event->encoder_number)
+    {
+    case ENCODER_NUMBER:
+        if (encoder_position == event->encoder_position)
+        {
+            printf("Encoder number %d button %s.\n", event->encoder_number, event->button_status == 1 ? "released" : "pressed");
+        }
+        else
+        {
+            encoder_position = event->encoder_position;
+            printf("Encoder number %d position %0.2f with button %s.\n", event->encoder_number, event->encoder_position, event->button_status == 1 ? "released" : "pressed");
+        }
+        break;
+    default:
+        break;
+    }
 }
 ```

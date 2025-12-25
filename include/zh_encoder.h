@@ -6,6 +6,7 @@
 
 #include "esp_log.h"
 #include "driver/gpio.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_event.h"
@@ -20,6 +21,7 @@
         .queue_size = 1,                        \
         .a_gpio_number = GPIO_NUM_MAX,          \
         .b_gpio_number = GPIO_NUM_MAX,          \
+        .s_gpio_number = GPIO_NUM_MAX,          \
         .encoder_min_value = -100,              \
         .encoder_max_value = 100,               \
         .encoder_step = 1,                      \
@@ -42,6 +44,7 @@ extern "C"
         uint8_t queue_size;        /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
         uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
         uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
+        uint8_t s_gpio_number;     /*!< Encoder button GPIO number. */
         int32_t encoder_min_value; /*!< Encoder min value. @note Must be less than encoder_max_value. */
         int32_t encoder_max_value; /*!< Encoder max value. @note Must be greater than encoder_min_value. */
         double encoder_step;       /*!< Encoder step. @note Must be greater than 0. */
@@ -55,10 +58,12 @@ extern "C"
     {
         uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
         uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
+        uint8_t s_gpio_number;     /*!< Encoder button GPIO number. */
         int32_t encoder_min_value; /*!< Encoder min value. */
         int32_t encoder_max_value; /*!< Encoder max value. */
         double encoder_step;       /*!< Encoder step. */
         double encoder_position;   /*!< Encoder position. */
+        bool button_status;        /*!< Encoder button status. */
         uint8_t encoder_number;    /*!< Encoder unique number. */
         uint8_t encoder_state;     /*!< Encoder internal state. */
         bool is_initialized;       /*!< Encoder initialization flag. */
@@ -85,6 +90,7 @@ extern "C"
     {
         uint8_t encoder_number;  /*!< Encoder unique number. */
         double encoder_position; /*!< Encoder current position. */
+        bool button_status;      /*!< Encoder button status. */
     } zh_encoder_event_on_isr_t;
 
     /**

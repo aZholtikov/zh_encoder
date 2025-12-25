@@ -1,6 +1,1 @@
-if(${IDF_TARGET} STREQUAL esp8266)
-    set(requires driver)
-else()
-    set(requires driver esp_event)
-endif()
-idf_component_register(SRCS "zh_encoder.c" INCLUDE_DIRS "include" REQUIRES ${requires})
+idf_component_register(SRCS "zh_encoder.c" INCLUDE_DIRS "include" REQUIRES esp_event driver esp_timer)

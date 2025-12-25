@@ -16,6 +16,8 @@
 #define ZH_ENCODER_DIRECTION_CW 0x10
 #define ZH_ENCODER_DIRECTION_CCW 0x20
 
+#define BUTTON_DEBOUNCE_TIME 20
+
 static const uint8_t _encoder_matrix[7][4] = {
     {0x03, 0x02, 0x01, 0x00},
     {0x23, 0x00, 0x01, 0x00},
@@ -27,6 +29,8 @@ static const uint8_t _encoder_matrix[7][4] = {
 
 TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
+
+static volatile uint64_t _prev_us = 0;
 static uint8_t _encoder_counter = 0;
 static bool _is_prev_gpio_isr_handler = false;
 static zh_encoder_stats_t _stats = {0};
@@ -51,13 +55,29 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     err = _zh_encoder_resources_init(config);
     if (_is_prev_gpio_isr_handler == true)
     {
-        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_reset_pin((gpio_num_t)config->a_gpio_number);
-                       gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+        if (config->s_gpio_number != GPIO_NUM_MAX)
+        {
+            ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->s_gpio_number);
+                           gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number); gpio_reset_pin((gpio_num_t)config->s_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+        }
+        else
+        {
+            ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_reset_pin((gpio_num_t)config->a_gpio_number);
+                           gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+        }
     }
     else
     {
-        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_uninstall_isr_service();
-                       gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+        if (config->s_gpio_number != GPIO_NUM_MAX)
+        {
+            ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->s_gpio_number);
+                           gpio_uninstall_isr_service(); gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number); gpio_reset_pin((gpio_num_t)config->s_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+        }
+        else
+        {
+            ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_uninstall_isr_service();
+                           gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Encoder initialization failed. Resources initialization failed.");
+        }
     }
     err = _zh_encoder_task_init(config);
     if (_is_prev_gpio_isr_handler == true)
@@ -72,6 +92,8 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     }
     handle->a_gpio_number = config->a_gpio_number;
     handle->b_gpio_number = config->b_gpio_number;
+    handle->s_gpio_number = config->s_gpio_number;
+    handle->button_status = gpio_get_level((gpio_num_t)config->s_gpio_number);
     handle->encoder_number = config->encoder_number;
     handle->encoder_min_value = config->encoder_min_value;
     handle->encoder_max_value = config->encoder_max_value;
@@ -90,8 +112,10 @@ esp_err_t zh_encoder_deinit(zh_encoder_handle_t *handle)
     ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder deinitialization failed. Encoder not initialized.");
     gpio_isr_handler_remove((gpio_num_t)handle->a_gpio_number);
     gpio_isr_handler_remove((gpio_num_t)handle->b_gpio_number);
+    gpio_isr_handler_remove((gpio_num_t)handle->s_gpio_number);
     gpio_reset_pin((gpio_num_t)handle->a_gpio_number);
     gpio_reset_pin((gpio_num_t)handle->b_gpio_number);
+    gpio_reset_pin((gpio_num_t)handle->s_gpio_number);
     if (_encoder_counter == 1)
     {
         vQueueDelete(_queue_handle);
@@ -164,11 +188,12 @@ static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *con
 
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
-    ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX && config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
-    ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Both GPIO is same.")
+    ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX && config->b_gpio_number < GPIO_NUM_MAX && config->s_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
+    ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Encoder A and B GPIO is same.")
+    ZH_ERROR_CHECK(config->a_gpio_number != config->s_gpio_number && config->b_gpio_number != config->s_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Encoder GPIO and button GPIO is same.")
     gpio_config_t pin_config = {
         .mode = GPIO_MODE_INPUT,
-        .pin_bit_mask = (1ULL << config->a_gpio_number) | (1ULL << config->b_gpio_number),
+        .pin_bit_mask = (1ULL << config->a_gpio_number) | (1ULL << config->b_gpio_number) | (1ULL << config->s_gpio_number),
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .intr_type = GPIO_INTR_ANYEDGE};
     esp_err_t err = gpio_config(&pin_config);
@@ -192,6 +217,17 @@ static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, z
     else
     {
         ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_uninstall_isr_service(); gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Interrupt initialization failed.");
+    }
+    err = gpio_isr_handler_add(config->s_gpio_number, _zh_encoder_isr_handler, handle);
+    if (_is_prev_gpio_isr_handler == true)
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number);
+                       gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Interrupt initialization failed.");
+    }
+    else
+    {
+        ZH_ERROR_CHECK(err == ESP_OK, err, gpio_isr_handler_remove((gpio_num_t)config->a_gpio_number); gpio_isr_handler_remove((gpio_num_t)config->b_gpio_number); gpio_uninstall_isr_service();
+                       gpio_reset_pin((gpio_num_t)config->a_gpio_number); gpio_reset_pin((gpio_num_t)config->b_gpio_number), "Interrupt initialization failed.");
     }
     return ESP_OK;
 }
@@ -220,7 +256,19 @@ static void IRAM_ATTR _zh_encoder_isr_handler(void *arg)
 {
     zh_encoder_handle_t *encoder_handle = (zh_encoder_handle_t *)arg;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    encoder_handle->encoder_state = _encoder_matrix[encoder_handle->encoder_state & 0x0F][(gpio_get_level(encoder_handle->b_gpio_number) << 1) | gpio_get_level(encoder_handle->a_gpio_number)];
+    uint64_t _current_us = esp_timer_get_time();
+    bool button_flag = false;
+    if (_current_us - _prev_us >= BUTTON_DEBOUNCE_TIME)
+    {
+        bool button_status = gpio_get_level((gpio_num_t)encoder_handle->s_gpio_number);
+        if (encoder_handle->button_status != button_status)
+        {
+            button_flag = true;
+            encoder_handle->button_status = button_status;
+        }
+    }
+    _prev_us = _current_us;
+    encoder_handle->encoder_state = _encoder_matrix[encoder_handle->encoder_state & 0x0F][(gpio_get_level((gpio_num_t)encoder_handle->b_gpio_number) << 1) | gpio_get_level((gpio_num_t)encoder_handle->a_gpio_number)];
     switch (encoder_handle->encoder_state & 0x30)
     {
     case ZH_ENCODER_DIRECTION_CW:
@@ -252,6 +300,13 @@ static void IRAM_ATTR _zh_encoder_isr_handler(void *arg)
         }
         break;
     default:
+        if (button_flag == true)
+        {
+            if (xQueueSendFromISR(_queue_handle, encoder_handle, &xHigherPriorityTaskWoken) != pdTRUE)
+            {
+                ++_stats.queue_overflow_error;
+            }
+        }
         break;
     }
     if (xHigherPriorityTaskWoken == pdTRUE)
@@ -268,6 +323,7 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
     {
         encoder_data.encoder_number = queue.encoder_number;
         encoder_data.encoder_position = queue.encoder_position;
+        encoder_data.button_status = queue.button_status;
         esp_err_t err = esp_event_post(ZH_ENCODER, 0, &encoder_data, sizeof(zh_encoder_event_on_isr_t), 1000 / portTICK_PERIOD_MS);
         if (err != ESP_OK)
         {
