@@ -39,33 +39,33 @@ extern "C"
      */
     typedef struct
     {
+        double encoder_step;       /*!< Encoder step. @note Must be greater than 0. */
+        double encoder_min_value; /*!< Encoder min value. @note Must be less than encoder_max_value. */
+        double encoder_max_value; /*!< Encoder max value. @note Must be greater than encoder_min_value. */
         uint8_t task_priority;     /*!< Task priority for the encoder isr processing. @note Minimum value is 1. */
-        uint16_t stack_size;       /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
         uint8_t queue_size;        /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
         uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
         uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
         uint8_t s_gpio_number;     /*!< Encoder button GPIO number. */
-        int32_t encoder_min_value; /*!< Encoder min value. @note Must be less than encoder_max_value. */
-        int32_t encoder_max_value; /*!< Encoder max value. @note Must be greater than encoder_min_value. */
-        double encoder_step;       /*!< Encoder step. @note Must be greater than 0. */
         uint8_t encoder_number;    /*!< Unique encoder number. */
+        uint16_t stack_size;       /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
     } zh_encoder_init_config_t;
 
     /**
      * @brief Encoder handle.
      */
-    typedef struct
+    typedef struct // -V802
     {
+        double encoder_step;       /*!< Encoder step. */
+        double encoder_position;   /*!< Encoder position. */
+        double encoder_min_value; /*!< Encoder min value. */
+        double encoder_max_value; /*!< Encoder max value. */
         uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
         uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
         uint8_t s_gpio_number;     /*!< Encoder button GPIO number. */
-        int32_t encoder_min_value; /*!< Encoder min value. */
-        int32_t encoder_max_value; /*!< Encoder max value. */
-        double encoder_step;       /*!< Encoder step. */
-        double encoder_position;   /*!< Encoder position. */
-        bool button_status;        /*!< Encoder button status. */
         uint8_t encoder_number;    /*!< Encoder unique number. */
         uint8_t encoder_state;     /*!< Encoder internal state. */
+        bool button_status;        /*!< Encoder button status. */
         bool is_initialized;       /*!< Encoder initialization flag. */
     } zh_encoder_handle_t;
 
@@ -88,8 +88,8 @@ extern "C"
      */
     typedef struct
     {
-        uint8_t encoder_number;  /*!< Encoder unique number. */
         double encoder_position; /*!< Encoder current position. */
+        uint8_t encoder_number;  /*!< Encoder unique number. */
         bool button_status;      /*!< Encoder button status. */
     } zh_encoder_event_on_isr_t;
 
