@@ -155,7 +155,9 @@ esp_err_t zh_encoder_set(zh_encoder_handle_t *handle, double position)
     ZH_ERROR_CHECK(handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder set position failed. Invalid argument.");
     ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder set position failed. Encoder not initialized.");
     ZH_ERROR_CHECK(position <= handle->encoder_max_value && position >= handle->encoder_min_value, ESP_ERR_INVALID_ARG, NULL, "Encoder set position failed. Invalid argument.");
+    taskENTER_CRITICAL(&_spinlock);
     handle->encoder_position = position;
+    taskEXIT_CRITICAL(&_spinlock);
     ZH_LOGI("Encoder set position completed successfully.");
     return ESP_OK;
 }
@@ -175,7 +177,9 @@ esp_err_t zh_encoder_reset(zh_encoder_handle_t *handle)
     ZH_LOGI("Encoder reset started.");
     ZH_ERROR_CHECK(handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder reset failed. Invalid argument.");
     ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder reset failed. Encoder not initialized.");
+    taskENTER_CRITICAL(&_spinlock);
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
+    taskEXIT_CRITICAL(&_spinlock);
     ZH_LOGI("Encoder reset completed successfully.");
     return ESP_OK;
 }
