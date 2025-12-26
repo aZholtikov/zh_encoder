@@ -29,6 +29,7 @@ static const uint8_t _encoder_matrix[7][4] = {
 
 TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
+static portMUX_TYPE _spinlock = portMUX_INITIALIZER_UNLOCKED;
 
 static volatile uint64_t _prev_us = 0;
 static uint8_t _encoder_counter = 0;
@@ -128,6 +129,23 @@ esp_err_t zh_encoder_deinit(zh_encoder_handle_t *handle)
     handle->is_initialized = false;
     --_encoder_counter;
     ZH_LOGI("Encoder deinitialization completed successfully.");
+    return ESP_OK;
+}
+
+esp_err_t zh_encoder_reinit(zh_encoder_handle_t *handle, double min, double max, double step)
+{
+    ZH_LOGI("Encoder reinitialization started.");
+    ZH_ERROR_CHECK(handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid argument.");
+    ZH_ERROR_CHECK(handle->is_initialized == true, ESP_FAIL, NULL, "Encoder reinitialization failed. Encoder not initialized.");
+    ZH_ERROR_CHECK(max > min, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid encoder min/max value.");
+    ZH_ERROR_CHECK(step > 0, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid encoder step.");
+    taskENTER_CRITICAL(&_spinlock);
+    handle->encoder_min_value = min;
+    handle->encoder_max_value = max;
+    handle->encoder_step = step;
+    handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
+    taskEXIT_CRITICAL(&_spinlock);
+    ZH_LOGI("Encoder reinitialization completed successfully.");
     return ESP_OK;
 }
 

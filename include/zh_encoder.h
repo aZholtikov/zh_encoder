@@ -39,16 +39,16 @@ extern "C"
      */
     typedef struct
     {
-        double encoder_step;       /*!< Encoder step. @note Must be greater than 0. */
+        double encoder_step;      /*!< Encoder step. @note Must be greater than 0. */
         double encoder_min_value; /*!< Encoder min value. @note Must be less than encoder_max_value. */
         double encoder_max_value; /*!< Encoder max value. @note Must be greater than encoder_min_value. */
-        uint8_t task_priority;     /*!< Task priority for the encoder isr processing. @note Minimum value is 1. */
-        uint8_t queue_size;        /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
-        uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
-        uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
-        uint8_t s_gpio_number;     /*!< Encoder button GPIO number. */
-        uint8_t encoder_number;    /*!< Unique encoder number. */
-        uint16_t stack_size;       /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
+        uint8_t task_priority;    /*!< Task priority for the encoder isr processing. @note Minimum value is 1. */
+        uint8_t queue_size;       /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
+        uint8_t a_gpio_number;    /*!< Encoder A GPIO number. */
+        uint8_t b_gpio_number;    /*!< Encoder B GPIO number. */
+        uint8_t s_gpio_number;    /*!< Encoder button GPIO number. */
+        uint8_t encoder_number;   /*!< Unique encoder number. */
+        uint16_t stack_size;      /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
     } zh_encoder_init_config_t;
 
     /**
@@ -56,17 +56,17 @@ extern "C"
      */
     typedef struct // -V802
     {
-        double encoder_step;       /*!< Encoder step. */
-        double encoder_position;   /*!< Encoder position. */
+        double encoder_step;      /*!< Encoder step. */
+        double encoder_position;  /*!< Encoder position. */
         double encoder_min_value; /*!< Encoder min value. */
         double encoder_max_value; /*!< Encoder max value. */
-        uint8_t a_gpio_number;     /*!< Encoder A GPIO number. */
-        uint8_t b_gpio_number;     /*!< Encoder B GPIO number. */
-        uint8_t s_gpio_number;     /*!< Encoder button GPIO number. */
-        uint8_t encoder_number;    /*!< Encoder unique number. */
-        uint8_t encoder_state;     /*!< Encoder internal state. */
-        bool button_status;        /*!< Encoder button status. */
-        bool is_initialized;       /*!< Encoder initialization flag. */
+        uint8_t a_gpio_number;    /*!< Encoder A GPIO number. */
+        uint8_t b_gpio_number;    /*!< Encoder B GPIO number. */
+        uint8_t s_gpio_number;    /*!< Encoder button GPIO number. */
+        uint8_t encoder_number;   /*!< Encoder unique number. */
+        uint8_t encoder_state;    /*!< Encoder internal state. */
+        bool button_status;       /*!< Encoder button status. */
+        bool is_initialized;      /*!< Encoder initialization flag. */
     } zh_encoder_handle_t;
 
     /**
@@ -115,6 +115,20 @@ extern "C"
      * @return ESP_OK if success or an error code otherwise.
      */
     esp_err_t zh_encoder_deinit(zh_encoder_handle_t *handle);
+
+    /**
+     * @brief Reinitialize encoder (change min, max and step values).
+     *
+     * @note The encoder will be set to the position (encoder_min_value + encoder_max_value)/2.
+     *
+     * @param[in, out] handle Pointer to unique encoder handle.
+     * @param[in] min Encoder min value. @note Must be less than encoder_max_value.
+     * @param[in] max Encoder max value. @note Must be greater than encoder_min_value.
+     * @param[in] step Encoder step. @note Must be greater than 0.
+     *
+     * @return ESP_OK if success or an error code otherwise.
+     */
+    esp_err_t zh_encoder_reinit(zh_encoder_handle_t *handle, double min, double max, double step);
 
     /**
      * @brief Set encoder position.
