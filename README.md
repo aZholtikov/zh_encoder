@@ -15,6 +15,11 @@
 ## Attention
 
 1. If the button is not used, specify any free GPIO in the initial configuration.
+2. For correct operation, please enable the following settings in the menuconfig:
+
+```text
+GPIO_CTRL_FUNC_IN_IRAM
+```
 
 ## Using
 
