@@ -35,6 +35,7 @@ static volatile uint64_t _prev_us = 0;
 static uint8_t _encoder_counter = 0;
 static bool _is_prev_gpio_isr_handler = false;
 static zh_encoder_stats_t _stats = {0};
+static uint8_t _encoder_number_matrix[10] = {0};
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config);
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
@@ -102,6 +103,14 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     handle->encoder_position = (handle->encoder_min_value + handle->encoder_max_value) / 2;
     handle->is_initialized = true;
     ++_encoder_counter;
+    for (uint8_t i = 0; i < sizeof(_encoder_number_matrix); ++i)
+    {
+        if (_encoder_number_matrix[i] == 0)
+        {
+            _encoder_number_matrix[i] = handle->encoder_number;
+            break;
+        }
+    }
     ZH_LOGI("Encoder initialization completed successfully.");
     return ESP_OK;
 }
@@ -128,11 +137,19 @@ esp_err_t zh_encoder_deinit(zh_encoder_handle_t *handle)
     }
     handle->is_initialized = false;
     --_encoder_counter;
+    for (uint8_t i = 0; i < sizeof(_encoder_number_matrix); ++i)
+    {
+        if (_encoder_number_matrix[i] == handle->encoder_number)
+        {
+            _encoder_number_matrix[i] = 0;
+            break;
+        }
+    }
     ZH_LOGI("Encoder deinitialization completed successfully.");
     return ESP_OK;
 }
 
-esp_err_t zh_encoder_reinit(zh_encoder_handle_t *handle, double min, double max, double step)
+esp_err_t zh_encoder_reinit(zh_encoder_handle_t *handle, double min, double max, double step) // -V2008
 {
     ZH_LOGI("Encoder reinitialization started.");
     ZH_ERROR_CHECK(handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid argument.");
@@ -198,13 +215,18 @@ void zh_encoder_reset_stats(void)
     ZH_LOGI("Error statistic reset successfully.");
 }
 
-static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config)
+static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config) // -V2008
 {
     ZH_ERROR_CHECK(config != NULL, ESP_ERR_INVALID_ARG, NULL, "Invalid configuration.");
     ZH_ERROR_CHECK(config->task_priority >= 1 && config->stack_size >= configMINIMAL_STACK_SIZE, ESP_ERR_INVALID_ARG, NULL, "Invalid task settings.");
     ZH_ERROR_CHECK(config->queue_size >= 1, ESP_ERR_INVALID_ARG, NULL, "Invalid queue size.");
     ZH_ERROR_CHECK(config->encoder_max_value > config->encoder_min_value, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder min/max value.");
     ZH_ERROR_CHECK(config->encoder_step > 0, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder step.");
+    ZH_ERROR_CHECK(config->encoder_number > 0, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder number.");
+    for (uint8_t i = 0; i < sizeof(_encoder_number_matrix); ++i)
+    {
+        ZH_ERROR_CHECK(config->encoder_number != _encoder_number_matrix[i], ESP_ERR_INVALID_ARG, NULL, "Encoder number already present.");
+    }
     return ESP_OK;
 }
 

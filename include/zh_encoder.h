@@ -47,7 +47,7 @@ extern "C"
         uint8_t a_gpio_number;    /*!< Encoder A GPIO number. */
         uint8_t b_gpio_number;    /*!< Encoder B GPIO number. */
         uint8_t s_gpio_number;    /*!< Encoder button GPIO number. */
-        uint8_t encoder_number;   /*!< Unique encoder number. */
+        uint8_t encoder_number;   /*!< Unique encoder number. @note Must be greater than 0. */
         uint16_t stack_size;      /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
     } zh_encoder_init_config_t;
 
