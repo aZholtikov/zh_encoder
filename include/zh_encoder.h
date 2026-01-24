@@ -6,6 +6,7 @@
 
 #include "esp_log.h"
 #include "driver/gpio.h"
+#include "driver/pulse_cnt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -22,8 +23,9 @@
         .a_gpio_number = GPIO_NUM_MAX,          \
         .b_gpio_number = GPIO_NUM_MAX,          \
         .s_gpio_number = GPIO_NUM_MAX,          \
-        .encoder_min_value = -100,              \
-        .encoder_max_value = 100,               \
+        .s_gpio_debounce_time = 10,             \
+        .encoder_min_value = -10,               \
+        .encoder_max_value = 10,                \
         .encoder_step = 1,                      \
         .encoder_number = 0}
 
@@ -32,23 +34,24 @@ extern "C"
 {
 #endif
 
-    extern TaskHandle_t zh_encoder; /*!< Unique encoder Task Handle. */
+    extern TaskHandle_t zh_encoder; /*!< Encoder Task Handle. */
 
     /**
      * @brief Structure for initial initialization of encoder.
      */
     typedef struct
     {
-        double encoder_step;      /*!< Encoder step. @note Must be greater than 0. */
-        double encoder_min_value; /*!< Encoder min value. @note Must be less than encoder_max_value. */
-        double encoder_max_value; /*!< Encoder max value. @note Must be greater than encoder_min_value. */
-        uint8_t task_priority;    /*!< Task priority for the encoder isr processing. @note Minimum value is 1. */
-        uint8_t queue_size;       /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
-        uint8_t a_gpio_number;    /*!< Encoder A GPIO number. */
-        uint8_t b_gpio_number;    /*!< Encoder B GPIO number. */
-        uint8_t s_gpio_number;    /*!< Encoder button GPIO number. */
-        uint8_t encoder_number;   /*!< Unique encoder number. @note Must be greater than 0. */
-        uint16_t stack_size;      /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
+        double encoder_step;           /*!< Encoder step. @note Must be greater than 0. */
+        double encoder_min_value;      /*!< Encoder min value. @note Must be less than encoder_max_value. */
+        double encoder_max_value;      /*!< Encoder max value. @note Must be greater than encoder_min_value. */
+        uint8_t task_priority;         /*!< Task priority for the encoder isr processing. @note Minimum value is 1. */
+        uint8_t queue_size;            /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
+        uint8_t a_gpio_number;         /*!< Encoder A GPIO number. */
+        uint8_t b_gpio_number;         /*!< Encoder B GPIO number. */
+        uint8_t s_gpio_number;         /*!< Encoder button GPIO number. */
+        uint16_t s_gpio_debounce_time; /*!< Encoder button debounce_time. @note In microseconds. */
+        uint8_t encoder_number;        /*!< Unique encoder number. @note Must be greater than 0. */
+        uint16_t stack_size;           /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */
     } zh_encoder_init_config_t;
 
     /**
@@ -56,17 +59,19 @@ extern "C"
      */
     typedef struct // -V802
     {
-        double encoder_step;      /*!< Encoder step. */
-        double encoder_position;  /*!< Encoder position. */
-        double encoder_min_value; /*!< Encoder min value. */
-        double encoder_max_value; /*!< Encoder max value. */
-        uint8_t a_gpio_number;    /*!< Encoder A GPIO number. */
-        uint8_t b_gpio_number;    /*!< Encoder B GPIO number. */
-        uint8_t s_gpio_number;    /*!< Encoder button GPIO number. */
-        uint8_t encoder_number;   /*!< Encoder unique number. */
-        uint8_t encoder_state;    /*!< Encoder internal state. */
-        bool button_status;       /*!< Encoder button status. */
-        bool is_initialized;      /*!< Encoder initialization flag. */
+        pcnt_unit_handle_t pcnt_unit_handle;         /*!< Encoder unique pcnt unit handle. */
+        pcnt_channel_handle_t pcnt_channel_a_handle; /*!< Encoder unique pcnt channel handle. */
+        pcnt_channel_handle_t pcnt_channel_b_handle; /*!< Encoder unique pcnt channel handle. */
+        double encoder_step;                         /*!< Encoder step. */
+        double encoder_position;                     /*!< Encoder position. */
+        double encoder_min_value;                    /*!< Encoder min value. */
+        double encoder_max_value;                    /*!< Encoder max value. */
+        uint8_t encoder_number;                      /*!< Encoder unique number. */
+        uint8_t s_gpio_number;                       /*!< Encoder button GPIO number. */
+        uint16_t s_gpio_debounce_time;               /*!< Encoder button debounce_time. */
+        uint64_t s_gpio_prev_time;                   /*!< Encoder button prev interrupt time. */
+        bool s_gpio_status;                          /*!< Encoder button status. */
+        bool is_initialized;                         /*!< Encoder initialization flag. */
     } zh_encoder_handle_t;
 
     /**
@@ -79,19 +84,38 @@ extern "C"
         uint32_t min_stack_size;       /*!< Minimum free stack size. */
     } zh_encoder_stats_t;
 
+    /**
+     * @brief Enumeration of encoder event ID.
+     */
+    typedef enum
+    {
+        ZH_BUTTON_EVENT, /*!< Button event. */
+        ZH_ENCODER_EVENT /*!< Encoder event. */
+    } zh_encoder_event_id_t;
+
     ESP_EVENT_DECLARE_BASE(ZH_ENCODER);
 
     /**
-     * @brief Structure for sending data to the event handler when cause an interrupt.
+     * @brief Structure for sending data to the event handler when cause encoder interrupt.
      *
-     * @note Should be used with ZH_ENCODER event base.
+     * @note Should be used with ZH_ENCODER event base and ZH_ENCODER_EVENT event ID.
      */
     typedef struct
     {
         double encoder_position; /*!< Encoder current position. */
         uint8_t encoder_number;  /*!< Encoder unique number. */
-        bool button_status;      /*!< Encoder button status. */
     } zh_encoder_event_on_isr_t;
+
+    /**
+     * @brief Structure for sending data to the event handler when cause encoder button interrupt.
+     *
+     * @note Should be used with ZH_ENCODER event base and ZH_BUTTON_EVENT event ID.
+     */
+    typedef struct
+    {
+        uint8_t encoder_number; /*!< Encoder unique number. */
+        bool button_status;     /*!< Encoder button status. */
+    } zh_encoder_button_event_on_isr_t;
 
     /**
      * @brief Initialize encoder.

@@ -2,7 +2,7 @@
 
 ## Tested on
 
-1. [ESP32 ESP-IDF v5.5.1](https://docs.espressif.com/projects/esp-idf/en/v5.5.1/esp32/index.html)
+1. [ESP32 ESP-IDF v5.5.2](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/esp32/index.html)
 
 ## SAST Tools
 
@@ -14,11 +14,12 @@
 
 ## Attention
 
-1. If the button is not used, specify any free GPIO in the initial configuration.
-2. For correct operation, please enable the following settings in the menuconfig:
+1. For correct operation, please enable the following settings in the menuconfig:
 
 ```text
 GPIO_CTRL_FUNC_IN_IRAM
+PCNT_CTRL_FUNC_IN_IRAM
+PCNT_ISR_IRAM_SAFE
 ```
 
 ## Using
@@ -38,7 +39,7 @@ In the application, add the component:
 
 ## Examples
 
-One encoder on device:
+One encoder with button on device:
 
 ```c
 #include "zh_encoder.h"
@@ -47,8 +48,6 @@ One encoder on device:
 
 zh_encoder_handle_t encoder_handle = {0};
 
-double encoder_position = 0;
-
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
 void app_main(void)
@@ -56,20 +55,21 @@ void app_main(void)
     esp_log_level_set("zh_encoder", ESP_LOG_ERROR);
     esp_event_loop_create_default();
     esp_event_handler_instance_register(ZH_ENCODER, ESP_EVENT_ANY_ID, &zh_encoder_event_handler, NULL, NULL);
-    zh_encoder_init_config_t config = ZH_ENCODER_INIT_CONFIG_DEFAULT();
-    config.task_priority = 5;
-    config.stack_size = configMINIMAL_STACK_SIZE;
-    config.queue_size = 5;
-    config.a_gpio_number = GPIO_NUM_27;
-    config.b_gpio_number = GPIO_NUM_26;
-    config.s_gpio_number = GPIO_NUM_17;
-    config.encoder_min_value = 0;
-    config.encoder_max_value = 100;
-    config.encoder_step = 0.1;
-    config.encoder_number = ENCODER_NUMBER;
-    zh_encoder_init(&config, &encoder_handle);
+    zh_encoder_init_config_t encoder_init_config = ZH_ENCODER_INIT_CONFIG_DEFAULT();
+    encoder_init_config.task_priority = 5;
+    encoder_init_config.stack_size = configMINIMAL_STACK_SIZE;
+    encoder_init_config.queue_size = 5;
+    encoder_init_config.a_gpio_number = GPIO_NUM_4;
+    encoder_init_config.b_gpio_number = GPIO_NUM_16;
+    encoder_init_config.s_gpio_number = GPIO_NUM_15;
+    encoder_init_config.encoder_min_value = -10;
+    encoder_init_config.encoder_max_value = 10;
+    encoder_init_config.encoder_step = 0.001;
+    encoder_init_config.encoder_number = ENCODER_NUMBER;
+    zh_encoder_init(&encoder_init_config, &encoder_handle);
+    double encoder_position = 0;
     zh_encoder_get(&encoder_handle, &encoder_position);
-    printf("Encoder position %0.2f.\n", encoder_position);
+    printf("Encoder position %0.3f.\n", encoder_position);
     for (;;)
     {
         const zh_encoder_stats_t *stats = zh_encoder_get_stats();
@@ -82,19 +82,15 @@ void app_main(void)
 
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-    zh_encoder_event_on_isr_t *event = event_data;
-    switch (event->encoder_number)
+    switch (event_id)
     {
-    case ENCODER_NUMBER:
-        if (encoder_position == event->encoder_position)
-        {
-            printf("Encoder number %d button %s.\n", event->encoder_number, event->button_status == 1 ? "released" : "pressed");
-        }
-        else
-        {
-            encoder_position = event->encoder_position;
-            printf("Encoder number %d position %0.2f with button %s.\n", event->encoder_number, event->encoder_position, event->button_status == 1 ? "released" : "pressed");
-        }
+    case ZH_BUTTON_EVENT:
+        zh_encoder_button_event_on_isr_t *button_event = event_data;
+        printf("Encoder number %d button %s.\n", button_event->encoder_number, button_event->button_status == 1 ? "released" : "pressed");
+        break;
+    case ZH_ENCODER_EVENT:
+        zh_encoder_event_on_isr_t *encoder_event = event_data;
+        printf("Encoder number %d position %0.3f.\n", encoder_event->encoder_number, encoder_event->encoder_position);
         break;
     default:
         break;
