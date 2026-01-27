@@ -28,7 +28,7 @@ static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *con
 static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
 static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *config);
-static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config);
+static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
 static bool _zh_encoder_isr_handler(pcnt_unit_handle_t unit, const pcnt_watch_event_data_t *edata, void *user_ctx);
 static void _zh_encoder_isr_processing_task(void *pvParameter);
 static void _zh_encoder_button_isr_handler(void *arg);
@@ -44,7 +44,7 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Initial configuration check failed.");
     err = _zh_encoder_resources_init(config);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Resources initialization failed.");
-    err = _zh_encoder_task_init(config);
+    err = _zh_encoder_task_init(config, handle);
     ZH_ERROR_CHECK(err == ESP_OK, err, vQueueDelete(_queue_handle); _queue_handle = NULL, "Encoder initialization failed. Processing task initialization failed.");
     err = _zh_encoder_pcnt_init(config, handle);
     ZH_ERROR_CHECK(err == ESP_OK, err, vQueueDelete(_queue_handle); _queue_handle = NULL; vTaskDelete(zh_encoder); zh_encoder = NULL,
@@ -103,7 +103,7 @@ esp_err_t zh_encoder_deinit(zh_encoder_handle_t *handle)
     return ESP_OK;
 }
 
-esp_err_t zh_encoder_reinit(zh_encoder_handle_t *handle, double min, double max, double step) // -V2008
+esp_err_t zh_encoder_reinit(zh_encoder_handle_t *handle, float min, float max, float step) // -V2008
 {
     ZH_LOGI("Encoder reinitialization started.");
     ZH_ERROR_CHECK(handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid argument.");
@@ -120,7 +120,7 @@ esp_err_t zh_encoder_reinit(zh_encoder_handle_t *handle, double min, double max,
     return ESP_OK;
 }
 
-esp_err_t zh_encoder_set(zh_encoder_handle_t *handle, double position)
+esp_err_t zh_encoder_set(zh_encoder_handle_t *handle, float position)
 {
     ZH_LOGI("Encoder set position started.");
     ZH_ERROR_CHECK(handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder set position failed. Invalid argument.");
@@ -133,7 +133,7 @@ esp_err_t zh_encoder_set(zh_encoder_handle_t *handle, double position)
     return ESP_OK;
 }
 
-esp_err_t zh_encoder_get(const zh_encoder_handle_t *handle, double *position)
+esp_err_t zh_encoder_get(const zh_encoder_handle_t *handle, float *position)
 {
     ZH_LOGI("Encoder get position started.");
     ZH_ERROR_CHECK(handle != NULL && position != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder get position failed. Invalid argument.");
@@ -235,7 +235,7 @@ static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, z
     pcnt_event_callbacks_t cbs = {
         .on_reach = _zh_encoder_isr_handler,
     };
-    err = pcnt_unit_register_event_callbacks(pcnt_unit_handle, &cbs, handle);
+    err = pcnt_unit_register_event_callbacks(pcnt_unit_handle, &cbs, NULL);
     ZH_ERROR_CHECK(err == ESP_OK, err, pcnt_del_channel(pcnt_channel_a_handle); pcnt_del_channel(pcnt_channel_b_handle); pcnt_del_unit(pcnt_unit_handle),
                                                                                                                          "PCNT initialization failed.");
     err = pcnt_unit_enable(pcnt_unit_handle);
@@ -287,17 +287,17 @@ static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *conf
 {
     if (_encoder_counter == 0)
     {
-        _queue_handle = xQueueCreate(config->queue_size, sizeof(zh_encoder_event_on_isr_t));
+        _queue_handle = xQueueCreate(config->queue_size, sizeof(int));
         ZH_ERROR_CHECK(_queue_handle != NULL, ESP_FAIL, NULL, "Failed to create queue.");
     }
     return ESP_OK;
 }
 
-static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config)
+static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
     if (_encoder_counter == 0)
     {
-        BaseType_t err = xTaskCreatePinnedToCore(&_zh_encoder_isr_processing_task, "zh_encoder_isr_processing", config->stack_size, NULL, config->task_priority,
+        BaseType_t err = xTaskCreatePinnedToCore(&_zh_encoder_isr_processing_task, "zh_encoder_isr_processing", config->stack_size, handle, config->task_priority,
                                                  &zh_encoder, tskNO_AFFINITY);
         ZH_ERROR_CHECK(err == pdPASS, ESP_FAIL, NULL, "Failed to create isr processing task.");
     }
@@ -307,38 +307,8 @@ static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config)
 static bool IRAM_ATTR _zh_encoder_isr_handler(pcnt_unit_handle_t unit, const pcnt_watch_event_data_t *edata, void *user_ctx)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    zh_encoder_handle_t *encoder_handle = (zh_encoder_handle_t *)user_ctx;
     pcnt_unit_clear_count(unit);
-    switch (edata->watch_point_value)
-    {
-    case ZH_ENCODER_DIRECTION_CW:
-        if (encoder_handle->encoder_position < encoder_handle->encoder_max_value)
-        {
-            encoder_handle->encoder_position = encoder_handle->encoder_position + encoder_handle->encoder_step;
-            if (encoder_handle->encoder_position > encoder_handle->encoder_max_value)
-            {
-                encoder_handle->encoder_position = encoder_handle->encoder_max_value;
-            }
-        }
-        break;
-    case ZH_ENCODER_DIRECTION_CCW:
-        if (encoder_handle->encoder_position > encoder_handle->encoder_min_value)
-        {
-            encoder_handle->encoder_position = encoder_handle->encoder_position - encoder_handle->encoder_step;
-            if (encoder_handle->encoder_position < encoder_handle->encoder_min_value)
-            {
-                encoder_handle->encoder_position = encoder_handle->encoder_min_value;
-            }
-        }
-        break;
-    default:
-        return false;
-        break;
-    }
-    zh_encoder_event_on_isr_t encoder_data = {0};
-    encoder_data.encoder_number = encoder_handle->encoder_number;
-    encoder_data.encoder_position = encoder_handle->encoder_position;
-    if (xQueueSendFromISR(_queue_handle, &encoder_data, &xHigherPriorityTaskWoken) != pdTRUE)
+    if (xQueueSendFromISR(_queue_handle, &edata->watch_point_value, &xHigherPriorityTaskWoken) != pdTRUE)
     {
         ++_stats.queue_overflow_error;
     }
@@ -351,9 +321,38 @@ static bool IRAM_ATTR _zh_encoder_isr_handler(pcnt_unit_handle_t unit, const pcn
 
 static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
 {
-    zh_encoder_event_on_isr_t encoder_data = {0};
+    zh_encoder_handle_t *encoder_handle = (zh_encoder_handle_t *)pvParameter;
+    int encoder_data = {0};
     while (xQueueReceive(_queue_handle, &encoder_data, portMAX_DELAY) == pdTRUE)
     {
+        switch (encoder_data)
+        {
+        case ZH_ENCODER_DIRECTION_CW:
+            if (encoder_handle->encoder_position < encoder_handle->encoder_max_value)
+            {
+                encoder_handle->encoder_position = encoder_handle->encoder_position + encoder_handle->encoder_step;
+                if (encoder_handle->encoder_position > encoder_handle->encoder_max_value)
+                {
+                    encoder_handle->encoder_position = encoder_handle->encoder_max_value;
+                }
+            }
+            break;
+        case ZH_ENCODER_DIRECTION_CCW:
+            if (encoder_handle->encoder_position > encoder_handle->encoder_min_value)
+            {
+                encoder_handle->encoder_position = encoder_handle->encoder_position - encoder_handle->encoder_step;
+                if (encoder_handle->encoder_position < encoder_handle->encoder_min_value)
+                {
+                    encoder_handle->encoder_position = encoder_handle->encoder_min_value;
+                }
+            }
+            break;
+        default:
+            break;
+        }
+        zh_encoder_event_on_isr_t encoder_data = {0};
+        encoder_data.encoder_number = encoder_handle->encoder_number;
+        encoder_data.encoder_position = encoder_handle->encoder_position;
         esp_err_t err = esp_event_post(ZH_ENCODER, ZH_ENCODER_EVENT, &encoder_data, sizeof(zh_encoder_event_on_isr_t), 1000 / portTICK_PERIOD_MS);
         if (err != ESP_OK)
         {

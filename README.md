@@ -67,7 +67,7 @@ void app_main(void)
     config.encoder_step = 0.001;
     config.encoder_number = ENCODER_NUMBER;
     zh_encoder_init(&config, &encoder_handle);
-    double encoder_position = 0;
+    float encoder_position = 0;
     zh_encoder_get(&encoder_handle, &encoder_position);
     printf("Encoder position %0.3f.\n", encoder_position);
     for (;;)
