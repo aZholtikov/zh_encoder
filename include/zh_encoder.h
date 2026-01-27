@@ -24,6 +24,7 @@
         .b_gpio_number = GPIO_NUM_MAX,          \
         .s_gpio_number = GPIO_NUM_MAX,          \
         .s_gpio_debounce_time = 10,             \
+        .pullup = true,                         \
         .encoder_min_value = -10,               \
         .encoder_max_value = 10,                \
         .encoder_step = 1,                      \
@@ -49,6 +50,7 @@ extern "C"
         uint8_t a_gpio_number;         /*!< Encoder A GPIO number. */
         uint8_t b_gpio_number;         /*!< Encoder B GPIO number. */
         uint8_t s_gpio_number;         /*!< Encoder button GPIO number. */
+        bool pullup;                   /*!< Pullup GPIO enable/disable. */
         uint16_t s_gpio_debounce_time; /*!< Encoder button debounce_time. @note In microseconds. */
         uint8_t encoder_number;        /*!< Unique encoder number. @note Must be greater than 0. */
         uint16_t stack_size;           /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE. */

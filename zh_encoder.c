@@ -247,6 +247,11 @@ static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, z
     err = pcnt_unit_start(pcnt_unit_handle);
     ZH_ERROR_CHECK(err == ESP_OK, err, pcnt_unit_disable(pcnt_unit_handle); pcnt_del_channel(pcnt_channel_a_handle); pcnt_del_channel(pcnt_channel_b_handle);
                    pcnt_del_unit(pcnt_unit_handle), "PCNT initialization failed.");
+    if (config->pullup == false)
+    {
+        gpio_pullup_dis((gpio_num_t)config->a_gpio_number);
+        gpio_pullup_dis((gpio_num_t)config->b_gpio_number);
+    }
     handle->pcnt_unit_handle = pcnt_unit_handle;
     handle->pcnt_channel_a_handle = pcnt_channel_a_handle;
     handle->pcnt_channel_b_handle = pcnt_channel_b_handle;
@@ -262,6 +267,7 @@ static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, z
     {
         gpio_config_t pin_config = {
             .mode = GPIO_MODE_INPUT,
+            .pull_up_en = (config->pullup == true) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
             .pin_bit_mask = (1ULL << config->s_gpio_number),
             .intr_type = GPIO_INTR_ANYEDGE};
         esp_err_t err = gpio_config(&pin_config);
