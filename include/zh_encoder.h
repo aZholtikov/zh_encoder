@@ -42,9 +42,9 @@ extern "C"
      */
     typedef struct
     {
-        float encoder_step;           /*!< Encoder step. @note Must be greater than 0. */
-        float encoder_min_value;      /*!< Encoder min value. @note Must be less than encoder_max_value. */
-        float encoder_max_value;      /*!< Encoder max value. @note Must be greater than encoder_min_value. */
+        float encoder_step;            /*!< Encoder step. @note Must be greater than 0. */
+        float encoder_min_value;       /*!< Encoder min value. @note Must be less than encoder_max_value. */
+        float encoder_max_value;       /*!< Encoder max value. @note Must be greater than encoder_min_value. */
         uint8_t task_priority;         /*!< Task priority for the encoder isr processing. @note Minimum value is 1. */
         uint8_t queue_size;            /*!< Queue size for task for the encoder processing. @note Minimum value is 1. */
         uint8_t a_gpio_number;         /*!< Encoder A GPIO number. */
@@ -64,10 +64,10 @@ extern "C"
         pcnt_unit_handle_t pcnt_unit_handle;         /*!< Encoder unique pcnt unit handle. */
         pcnt_channel_handle_t pcnt_channel_a_handle; /*!< Encoder unique pcnt channel handle. */
         pcnt_channel_handle_t pcnt_channel_b_handle; /*!< Encoder unique pcnt channel handle. */
-        float encoder_step;                         /*!< Encoder step. */
-        float encoder_position;                     /*!< Encoder position. */
-        float encoder_min_value;                    /*!< Encoder min value. */
-        float encoder_max_value;                    /*!< Encoder max value. */
+        float encoder_step;                          /*!< Encoder step. */
+        float encoder_position;                      /*!< Encoder position. */
+        float encoder_min_value;                     /*!< Encoder min value. */
+        float encoder_max_value;                     /*!< Encoder max value. */
         uint8_t encoder_number;                      /*!< Encoder unique number. */
         uint8_t s_gpio_number;                       /*!< Encoder button GPIO number. */
         uint16_t s_gpio_debounce_time;               /*!< Encoder button debounce_time. */
@@ -105,7 +105,7 @@ extern "C"
     typedef struct
     {
         float encoder_position; /*!< Encoder current position. */
-        uint8_t encoder_number;  /*!< Encoder unique number. */
+        uint8_t encoder_number; /*!< Encoder unique number. */
     } zh_encoder_event_on_isr_t;
 
     /**
@@ -137,6 +137,8 @@ extern "C"
 
     /**
      * @brief Deinitialize encoder.
+     *
+     * @param[in, out] handle Pointer to unique encoder handle.
      *
      * @return ESP_OK if success or an error code otherwise.
      */
