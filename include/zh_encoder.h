@@ -59,21 +59,22 @@ extern "C"
     /**
      * @brief Encoder handle.
      */
-    typedef struct // -V802
+    typedef struct
     {
-        pcnt_unit_handle_t pcnt_unit_handle;         /*!< Encoder unique pcnt unit handle. */
-        pcnt_channel_handle_t pcnt_channel_a_handle; /*!< Encoder unique pcnt channel handle. */
-        pcnt_channel_handle_t pcnt_channel_b_handle; /*!< Encoder unique pcnt channel handle. */
-        float encoder_step;                          /*!< Encoder step. */
-        float encoder_position;                      /*!< Encoder position. */
-        float encoder_min_value;                     /*!< Encoder min value. */
-        float encoder_max_value;                     /*!< Encoder max value. */
+        bool s_gpio_status;                          /*!< Encoder button status. */
+        bool is_initialized;                         /*!< Encoder initialization flag. */
         uint8_t encoder_number;                      /*!< Encoder unique number. */
         uint8_t s_gpio_number;                       /*!< Encoder button GPIO number. */
         uint16_t s_gpio_debounce_time;               /*!< Encoder button debounce_time. */
         uint64_t s_gpio_prev_time;                   /*!< Encoder button prev interrupt time. */
-        bool s_gpio_status;                          /*!< Encoder button status. */
-        bool is_initialized;                         /*!< Encoder initialization flag. */
+        float encoder_step;                          /*!< Encoder step. */
+        float encoder_position;                      /*!< Encoder position. */
+        float encoder_min_value;                     /*!< Encoder min value. */
+        float encoder_max_value;                     /*!< Encoder max value. */
+        pcnt_unit_handle_t pcnt_unit_handle;         /*!< Encoder unique pcnt unit handle. */
+        pcnt_channel_handle_t pcnt_channel_a_handle; /*!< Encoder unique pcnt channel handle. */
+        pcnt_channel_handle_t pcnt_channel_b_handle; /*!< Encoder unique pcnt channel handle. */
+
     } zh_encoder_handle_t;
 
     /**
