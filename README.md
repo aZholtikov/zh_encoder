@@ -86,7 +86,7 @@ void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t ev
     {
     case ZH_BUTTON_EVENT:
         zh_encoder_button_event_on_isr_t *button_event = event_data;
-        printf("Encoder number %d button %s.\n", button_event->encoder_number, button_event->button_status == 1 ? "released" : "pressed");
+        printf("Encoder number %d button %s.\n", button_event->encoder_number, (button_event->button_status == 1) ? "released" : "pressed");
         break;
     case ZH_ENCODER_EVENT:
         zh_encoder_event_on_isr_t *encoder_event = event_data;
