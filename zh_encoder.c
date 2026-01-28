@@ -39,6 +39,7 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
 {
     ZH_LOGI("Encoder initialization started.");
     ZH_ERROR_CHECK(config != NULL && handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder initialization failed. Invalid argument.");
+    ZH_ERROR_CHECK(handle->is_initialized == false, ESP_ERR_INVALID_STATE, NULL, "Encoder initialization failed. Encoder is already initialized.");
     ZH_ERROR_CHECK(_encoder_counter < sizeof(_encoder_number_matrix), ESP_ERR_INVALID_ARG, NULL, "Encoder initialization failed. Maximum quantity reached.");
     esp_err_t err = _zh_encoder_validate_config(config, handle);
     ZH_ERROR_CHECK(err == ESP_OK, err, NULL, "Encoder initialization failed. Initial configuration check failed.");
@@ -171,7 +172,6 @@ void zh_encoder_reset_stats(void)
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle) // -V2008
 {
-    ZH_ERROR_CHECK(config != NULL && handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Invalid argument.");
     ZH_ERROR_CHECK(config->task_priority >= 1 && config->stack_size >= configMINIMAL_STACK_SIZE, ESP_ERR_INVALID_ARG, NULL, "Invalid task settings.");
     ZH_ERROR_CHECK(config->queue_size >= 1, ESP_ERR_INVALID_ARG, NULL, "Invalid queue size.");
     ZH_ERROR_CHECK(config->encoder_max_value > config->encoder_min_value, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder min/max value.");
@@ -191,7 +191,6 @@ static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *con
 
 static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle) // -V2008
 {
-    ZH_ERROR_CHECK(config != NULL && handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Invalid argument.");
     ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX && config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
     ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Encoder A and B GPIO is same.")
     pcnt_unit_config_t pcnt_unit_config = {
@@ -260,7 +259,6 @@ static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, z
 
 static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle) // -V2008
 {
-    ZH_ERROR_CHECK(config != NULL && handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Invalid argument.");
     ZH_ERROR_CHECK(config->s_gpio_number <= GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
     ZH_ERROR_CHECK(config->a_gpio_number != config->s_gpio_number && config->b_gpio_number != config->s_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Encoder GPIO and button GPIO is same.")
     if (config->s_gpio_number != GPIO_NUM_MAX)
@@ -322,10 +320,10 @@ static bool IRAM_ATTR _zh_encoder_isr_handler(pcnt_unit_handle_t unit, const pcn
 static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
 {
     zh_encoder_handle_t *encoder_handle = (zh_encoder_handle_t *)pvParameter;
-    int encoder_data = {0};
-    while (xQueueReceive(_queue_handle, &encoder_data, portMAX_DELAY) == pdTRUE)
+    int pcnt_count = {0};
+    while (xQueueReceive(_queue_handle, &pcnt_count, portMAX_DELAY) == pdTRUE)
     {
-        switch (encoder_data)
+        switch (pcnt_count)
         {
         case ZH_ENCODER_DIRECTION_CW:
             if (encoder_handle->encoder_position < encoder_handle->encoder_max_value)
