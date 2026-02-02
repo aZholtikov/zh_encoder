@@ -54,6 +54,10 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     ZH_ERROR_CHECK(err == ESP_OK, err, pcnt_unit_stop(handle->pcnt_unit_handle); pcnt_unit_disable(handle->pcnt_unit_handle); pcnt_del_channel(handle->pcnt_channel_a_handle);
                    pcnt_del_channel(handle->pcnt_channel_b_handle); pcnt_del_unit(handle->pcnt_unit_handle); vQueueDelete(_queue_handle); _queue_handle = NULL;
                    vTaskDelete(zh_encoder); zh_encoder = NULL, "Encoder initialization failed. GPIO initialization failed.");
+    if (_stats.min_stack_size == 0)
+    {
+        _stats.min_stack_size = config->stack_size;
+    }
     handle->is_initialized = true;
     ++_encoder_counter;
     for (uint8_t i = 0; i < sizeof(_encoder_number_matrix); ++i)
