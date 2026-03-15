@@ -20,9 +20,9 @@ TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
 static portMUX_TYPE _spinlock = portMUX_INITIALIZER_UNLOCKED;
 
-static uint8_t _encoder_counter = 0;
+volatile static uint8_t _encoder_counter = 0;
 static zh_encoder_stats_t _stats = {0};
-static uint8_t _encoder_number_matrix[CONFIG_SOC_PCNT_UNITS_PER_GROUP] = {0};
+volatile static uint8_t _encoder_number_matrix[CONFIG_SOC_PCNT_UNITS_PER_GROUP] = {0};
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
 static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
