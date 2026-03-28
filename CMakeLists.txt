@@ -1,1 +1,6 @@
-idf_component_register(SRCS "zh_encoder.c" INCLUDE_DIRS "include" REQUIRES esp_event driver esp_timer)
+if(${IDF_VERSION_MAJOR} STREQUAL 6)
+    set(requires esp_driver_gpio esp_driver_pcnt esp_timer esp_event)
+else()
+    set(requires driver esp_timer esp_event)
+endif()
+idf_component_register(SRCS "zh_encoder.c" INCLUDE_DIRS "include" REQUIRES ${requires})

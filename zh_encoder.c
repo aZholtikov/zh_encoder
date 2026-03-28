@@ -22,7 +22,7 @@ static portMUX_TYPE _spinlock = portMUX_INITIALIZER_UNLOCKED;
 
 volatile static uint8_t _encoder_counter = 0;
 static zh_encoder_stats_t _stats = {0};
-volatile static uint8_t _encoder_number_matrix[CONFIG_SOC_PCNT_UNITS_PER_GROUP] = {0};
+volatile static uint8_t _encoder_number_matrix[8] = {0};
 
 static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
 static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle);
