@@ -74,7 +74,6 @@ extern "C"
         pcnt_unit_handle_t pcnt_unit_handle;         /*!< Encoder unique pcnt unit handle. */
         pcnt_channel_handle_t pcnt_channel_a_handle; /*!< Encoder unique pcnt channel handle. */
         pcnt_channel_handle_t pcnt_channel_b_handle; /*!< Encoder unique pcnt channel handle. */
-
     } zh_encoder_handle_t;
 
     /**
