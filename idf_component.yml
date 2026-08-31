@@ -1,0 +1,8 @@
+description: ESP32 ESP-IDF component for rotary encoder
+url: https://github.com/aZholtikov/zh_encoder
+version: "3.0.0"
+license: "Apache-2.0"
+maintainers:
+  - "Alexey Zholtikov <alexey.zholtikov@yandex.ru>"
+dependencies:
+  idf: ">=5.0"

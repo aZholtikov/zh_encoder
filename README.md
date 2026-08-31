@@ -1,20 +1,21 @@
-# ESP32 ESP-IDF component for rotary encoder
-
-## Tested on
-
-1. [ESP32 ESP-IDF v6.0.0](https://docs.espressif.com/projects/esp-idf/en/v6.0/esp32/index.html)
+# ESP32 ESP-IDF component for rotary encoder using PCNT peripheral
 
 ## SAST Tools
 
-[PVS-Studio](https://pvs-studio.com/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) - static analyzer for C, C++, C#, and Java code.
+[PVS-Studio](https://pvs-studio.com/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) — static analyzer for C, C++, C#, and Java code.
 
 ## Features
 
-1. Support up to 8 encoders on one device.
+1. Quadrature decoding via PCNT peripheral.
+2. Configurable min/max/step values with float precision.
+3. Push-button support with debouncing.
+4. Multiple simultaneous encoders (up to 8).
+5. Event-based notification via esp_event (ISR context).
+6. Error statistics tracking for diagnostics.
 
-## Attention
+## Note
 
-1. For correct operation, please enable the following settings in the menuconfig:
+Enable the following settings in menuconfig:
 
 ```text
 GPIO_CTRL_FUNC_IN_IRAM
@@ -24,9 +25,9 @@ PCNT_ISR_IRAM_SAFE
 
 ## Using
 
-In an existing project, run the following command to install the components:
+In an existing project, run the following command to install the component:
 
-```text
+```bash
 cd ../your_project/components
 git clone https://github.com/aZholtikov/zh_encoder
 ```
@@ -37,16 +38,14 @@ In the application, add the component:
 #include "zh_encoder.h"
 ```
 
-## Examples
-
-One encoder with button on device:
+## Example
 
 ```c
 #include "zh_encoder.h"
 
 #define ENCODER_NUMBER 0x01
 
-zh_encoder_handle_t encoder_handle = {0};
+zh_encoder_handle_t *encoder_handle = NULL;
 
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 
@@ -82,6 +81,7 @@ void app_main(void)
 
 void zh_encoder_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
+    (void)arg;
     switch (event_id)
     {
     case ZH_BUTTON_EVENT:
