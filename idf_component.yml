@@ -6,3 +6,6 @@ maintainers:
   - "Alexey Zholtikov <alexey.zholtikov@yandex.ru>"
 dependencies:
   idf: ">=5.0"
+  zh_vector:
+    git: "https://github.com/aZholtikov/zh_vector.git"
+    version: "dev"

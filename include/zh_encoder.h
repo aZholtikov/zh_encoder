@@ -25,6 +25,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_event.h"
+#include "zh_vector.h"
 
 #define ZH_ENCODER_INIT_CONFIG_DEFAULT()        \
     {                                           \

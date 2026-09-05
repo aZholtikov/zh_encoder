@@ -33,7 +33,6 @@
 struct _zh_encoder_handle_t
 {
     bool s_gpio_status;                          /*!< Current encoder button status */
-    bool is_initialized;                         /*!< Encoder initialization flag */
     uint8_t encoder_number;                      /*!< Unique encoder number */
     gpio_num_t s_gpio_number;                    /*!< Encoder button GPIO number */
     uint16_t s_gpio_debounce_time;               /*!< Encoder button debounce time in microseconds */
@@ -62,9 +61,9 @@ TaskHandle_t zh_encoder = NULL;                               /*!< Handle to the
 static QueueHandle_t _queue_handle = NULL;                    /*!< Queue for passing encoder events from ISR to processing task */
 static portMUX_TYPE _spinlock = portMUX_INITIALIZER_UNLOCKED; /*!< Spinlock for protecting encoder position access */
 
-volatile static uint8_t _encoder_counter = 0;            /*!< Total number of initialized encoders */
-static zh_encoder_stats_t _stats = {0};                  /*!< Global error statistics */
-volatile static uint8_t _encoder_number_matrix[8] = {0}; /*!< Matrix tracking used encoder numbers for uniqueness validation */
+static zh_encoder_stats_t _stats = {0}; /*!< Global error statistics */
+
+static zh_vector_t *_vector = NULL; /*!< Vector storing encoder numbers */
 
 /**
  * @brief Validate encoder initialization configuration.
@@ -180,34 +179,29 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     ZH_ERROR_CHECK(config != NULL && handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder initialization failed. Invalid argument.");
     ZH_ERROR_CHECK(*handle == NULL, ESP_ERR_INVALID_STATE, NULL, "Encoder initialization failed. Encoder is already initialized.");
     *handle = heap_caps_calloc(1, sizeof(zh_encoder_handle_t), MALLOC_CAP_8BIT);
-    ZH_ERROR_CHECK(_encoder_counter < sizeof(_encoder_number_matrix), ESP_ERR_INVALID_ARG, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Maximum quantity reached.");
     ZH_ERROR_CHECK(_zh_encoder_validate_config(config, *handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Initial configuration check failed.");
-    ZH_ERROR_CHECK(_zh_encoder_resources_init(config) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Resources initialization failed.");
+    if (_vector == NULL)
+    {
+        ZH_ERROR_CHECK(zh_vector_init(&_vector, sizeof(uint8_t)) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Failed to create vector.");
+    }
+    ZH_ERROR_CHECK(zh_vector_push_back(&_vector, &config->encoder_number) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Failed to add vector data.");
+    ZH_ERROR_CHECK(_zh_encoder_resources_init(config) == ESP_OK, ESP_FAIL, zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Resources initialization failed.");
     // clang-format off
     ZH_ERROR_CHECK(_zh_encoder_task_init(config) == ESP_OK, ESP_FAIL,
-                   vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Processing task initialization failed.");
+                   zh_vector_delete_back(&_vector); vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Processing task initialization failed.");
     ZH_ERROR_CHECK(_zh_encoder_pcnt_init(config, *handle) == ESP_OK, ESP_FAIL,
-                   vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL; vTaskDelete(zh_encoder); zh_encoder = NULL, "Encoder initialization failed. PCNT initialization failed.");
+                   zh_vector_delete_back(&_vector); vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL; vTaskDelete(zh_encoder); zh_encoder = NULL, "Encoder initialization failed. PCNT initialization failed.");
     ZH_ERROR_CHECK(_zh_encoder_gpio_init(config, *handle) == ESP_OK, ESP_FAIL,
                    {ZH_ERROR_CHECK(pcnt_unit_stop((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT unit stop fail.")};
                    {ZH_ERROR_CHECK(pcnt_unit_disable((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT unit disable fail.")};
                    {ZH_ERROR_CHECK(pcnt_del_channel((*handle)->pcnt_channel_a_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT delete channel fail.")};
                    {ZH_ERROR_CHECK(pcnt_del_channel((*handle)->pcnt_channel_b_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT delete channel fail.")};
                    {ZH_ERROR_CHECK(pcnt_del_unit((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT delete unit fail.")};
-                   vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL; vTaskDelete(zh_encoder); zh_encoder = NULL, "Encoder initialization failed. GPIO initialization failed.");
+                   zh_vector_delete_back(&_vector); vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL; vTaskDelete(zh_encoder); zh_encoder = NULL, "Encoder initialization failed. GPIO initialization failed.");
     // clang-format on
     if (_stats.min_stack_size == 0)
     {
         _stats.min_stack_size = config->stack_size;
-    }
-    ++_encoder_counter;
-    for (uint8_t i = 0; i < sizeof(_encoder_number_matrix); ++i)
-    {
-        if (_encoder_number_matrix[i] == 0)
-        {
-            _encoder_number_matrix[i] = (*handle)->encoder_number;
-            break;
-        }
     }
     ZH_LOGI("Encoder initialization completed successfully.");
     return ESP_OK;
@@ -229,21 +223,18 @@ esp_err_t zh_encoder_deinit(zh_encoder_handle_t **handle) // -V2008
         ZH_ERROR_CHECK(gpio_isr_handler_remove((*handle)->s_gpio_number) == ESP_OK, ESP_FAIL, NULL, "Encoder deinitialization failed. Remove GPIO isr handler failed.");
         ZH_ERROR_CHECK(gpio_reset_pin((*handle)->s_gpio_number) == ESP_OK, ESP_FAIL, NULL, "Encoder deinitialization failed. Reset GPIO failed.");
     }
-    if (_encoder_counter == 1)
+    int32_t index = 0;
+    ZH_ERROR_CHECK(zh_vector_find_item(&_vector, &(*handle)->encoder_number, &index) == ESP_ERR_NOT_FOUND, ESP_ERR_INVALID_ARG, NULL, "Encoder deinitialization failed. Failed to find vector item.");
+    ZH_ERROR_CHECK(zh_vector_delete_item(&_vector, (uint16_t)index) == ESP_OK, ESP_FAIL, NULL, "Encoder deinitialization failed. Vector delete item failed.");
+    uint16_t vector_size = 0;
+    ZH_ERROR_CHECK(zh_vector_get_size(&_vector, &vector_size) == ESP_OK, ESP_FAIL, NULL, "Encoder deinitialization failed. Failed to get vector size.");
+    if (vector_size == 0)
     {
         vQueueDelete(_queue_handle);
         _queue_handle = NULL;
         vTaskDelete(zh_encoder);
         zh_encoder = NULL;
-    }
-    --_encoder_counter;
-    for (uint8_t i = 0; i < sizeof(_encoder_number_matrix); ++i)
-    {
-        if (_encoder_number_matrix[i] == (*handle)->encoder_number)
-        {
-            _encoder_number_matrix[i] = 0;
-            break;
-        }
+        ZH_ERROR_CHECK(zh_vector_free(&_vector) == ESP_OK, ESP_FAIL, NULL, "Encoder deinitialization failed. Free vector failed.");
     }
     heap_caps_free(*handle);
     *handle = NULL;
@@ -320,9 +311,10 @@ static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *con
     ZH_ERROR_CHECK(config->encoder_max_value > config->encoder_min_value, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder min/max value.");
     ZH_ERROR_CHECK(config->encoder_step > 0, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder step.");
     ZH_ERROR_CHECK(config->encoder_number > 0, ESP_ERR_INVALID_ARG, NULL, "Invalid encoder number.");
-    for (uint8_t i = 0; i < sizeof(_encoder_number_matrix); ++i)
+    if (_vector != NULL)
     {
-        ZH_ERROR_CHECK(config->encoder_number != _encoder_number_matrix[i], ESP_ERR_INVALID_ARG, NULL, "Encoder number already present.");
+        int32_t index = 0;
+        ZH_ERROR_CHECK(zh_vector_find_item(&_vector, &config->encoder_number, &index) == ESP_ERR_NOT_FOUND, ESP_ERR_INVALID_ARG, NULL, "Encoder number already present.");
     }
     handle->encoder_number = config->encoder_number;
     handle->encoder_min_value = config->encoder_min_value;
@@ -453,7 +445,9 @@ static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, z
 
 static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *config)
 {
-    if (_encoder_counter == 0)
+    uint16_t vector_size = 0;
+    zh_vector_get_size(&_vector, &vector_size);
+    if (vector_size == 1)
     {
         _queue_handle = xQueueCreate(config->queue_size, sizeof(zh_encoder_queue_t));
         ZH_ERROR_CHECK(_queue_handle != NULL, ESP_FAIL, NULL, "Failed to create queue.");
@@ -463,7 +457,9 @@ static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *conf
 
 static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config)
 {
-    if (_encoder_counter == 0)
+    uint16_t vector_size = 0;
+    zh_vector_get_size(&_vector, &vector_size);
+    if (vector_size == 1)
     {
         ZH_ERROR_CHECK(xTaskCreatePinnedToCore(&_zh_encoder_isr_processing_task, "zh_encoder_isr_processing", config->stack_size, NULL, config->task_priority, &zh_encoder, tskNO_AFFINITY) == pdPASS,
                        ESP_FAIL, NULL, "Failed to create isr processing task.");
@@ -533,7 +529,7 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
             is_value_changed = false;
             zh_encoder_event_on_isr_t encoder_data = {0};
             encoder_data.encoder_number = encoder_handle->encoder_number;
-            if (encoder_handle->encoder_position == -0)
+            if (encoder_handle->encoder_position < 0 && encoder_handle->encoder_position > -1e-12)
             {
                 encoder_handle->encoder_position = 0;
             }
