@@ -188,16 +188,16 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     ZH_ERROR_CHECK(_zh_encoder_resources_init(config) == ESP_OK, ESP_FAIL, zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Resources initialization failed.");
     // clang-format off
     ZH_ERROR_CHECK(_zh_encoder_task_init(config) == ESP_OK, ESP_FAIL,
-                   zh_vector_delete_back(&_vector); vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Processing task initialization failed.");
+                   zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Processing task initialization failed.");
     ZH_ERROR_CHECK(_zh_encoder_pcnt_init(config, *handle) == ESP_OK, ESP_FAIL,
-                   zh_vector_delete_back(&_vector); vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL; vTaskDelete(zh_encoder); zh_encoder = NULL, "Encoder initialization failed. PCNT initialization failed.");
+                   zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. PCNT initialization failed.");
     ZH_ERROR_CHECK(_zh_encoder_gpio_init(config, *handle) == ESP_OK, ESP_FAIL,
                    {ZH_ERROR_CHECK(pcnt_unit_stop((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT unit stop fail.")};
                    {ZH_ERROR_CHECK(pcnt_unit_disable((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT unit disable fail.")};
                    {ZH_ERROR_CHECK(pcnt_del_channel((*handle)->pcnt_channel_a_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT delete channel fail.")};
                    {ZH_ERROR_CHECK(pcnt_del_channel((*handle)->pcnt_channel_b_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT delete channel fail.")};
                    {ZH_ERROR_CHECK(pcnt_del_unit((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "PCNT delete unit fail.")};
-                   zh_vector_delete_back(&_vector); vQueueDelete(_queue_handle); _queue_handle = NULL; heap_caps_free(*handle); *handle = NULL; vTaskDelete(zh_encoder); zh_encoder = NULL, "Encoder initialization failed. GPIO initialization failed.");
+                   zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. GPIO initialization failed.");
     // clang-format on
     if (_stats.min_stack_size == 0)
     {
