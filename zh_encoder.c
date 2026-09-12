@@ -173,7 +173,7 @@ static void _zh_encoder_button_isr_handler(void *arg);
 
 ESP_EVENT_DEFINE_BASE(ZH_ENCODER);
 
-esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t **handle) // -V2008
+esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t **handle)
 {
     ZH_LOGI("Encoder initialization started.");
     ZH_ERROR_CHECK(config != NULL && handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder initialization failed. Invalid argument.");
@@ -207,7 +207,7 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     return ESP_OK;
 }
 
-esp_err_t zh_encoder_deinit(zh_encoder_handle_t **handle) // -V2008
+esp_err_t zh_encoder_deinit(zh_encoder_handle_t **handle)
 {
     ZH_LOGI("Encoder deinitialization started.");
     ZH_ERROR_CHECK(handle != NULL && *handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder deinitialization failed. Invalid argument.");
@@ -242,7 +242,7 @@ esp_err_t zh_encoder_deinit(zh_encoder_handle_t **handle) // -V2008
     return ESP_OK;
 }
 
-esp_err_t zh_encoder_reinit(zh_encoder_handle_t **handle, float min, float max, float step) // -V2008
+esp_err_t zh_encoder_reinit(zh_encoder_handle_t **handle, float min, float max, float step)
 {
     ZH_LOGI("Encoder reinitialization started.");
     ZH_ERROR_CHECK(handle != NULL && *handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid argument.");
@@ -304,7 +304,7 @@ void zh_encoder_reset_stats(void)
     ZH_LOGI("Error statistic reset successfully.");
 }
 
-static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle) // -V2008
+static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
     ZH_ERROR_CHECK(config->task_priority >= 1 && config->stack_size >= configMINIMAL_STACK_SIZE, ESP_ERR_INVALID_ARG, NULL, "Invalid task settings.");
     ZH_ERROR_CHECK(config->queue_size >= 1, ESP_ERR_INVALID_ARG, NULL, "Invalid queue size.");
@@ -324,7 +324,7 @@ static esp_err_t _zh_encoder_validate_config(const zh_encoder_init_config_t *con
     return ESP_OK;
 }
 
-static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle) // -V2008
+static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
     ZH_ERROR_CHECK(config->a_gpio_number < GPIO_NUM_MAX && config->b_gpio_number < GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
     ZH_ERROR_CHECK(config->a_gpio_number != config->b_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Encoder A and B GPIO is same.")
@@ -419,7 +419,7 @@ static esp_err_t _zh_encoder_pcnt_init(const zh_encoder_init_config_t *config, z
     return ESP_OK;
 }
 
-static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle) // -V2008
+static esp_err_t _zh_encoder_gpio_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t *handle)
 {
     ZH_ERROR_CHECK(config->s_gpio_number <= GPIO_NUM_MAX, ESP_ERR_INVALID_ARG, NULL, "Invalid GPIO number.")
     ZH_ERROR_CHECK(config->a_gpio_number != config->s_gpio_number && config->b_gpio_number != config->s_gpio_number, ESP_ERR_INVALID_ARG, NULL, "Encoder GPIO and button GPIO is same.")

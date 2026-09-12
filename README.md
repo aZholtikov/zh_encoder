@@ -1,9 +1,5 @@
 # ESP32 ESP-IDF component for rotary encoder using PCNT peripheral
 
-## SAST Tools
-
-[PVS-Studio](https://pvs-studio.com/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) — static analyzer for C, C++, C#, and Java code.
-
 ## Features
 
 1. Quadrature decoding via PCNT peripheral.
