@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include "math.h"
+#include "string.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "driver/pulse_cnt.h"
@@ -119,6 +121,7 @@ extern "C"
     {
         float encoder_position; /*!< Encoder current position */
         uint8_t encoder_number; /*!< Encoder unique number */
+        bool encoder_status;    /*!< Encoder status (true when position increased, false when position reduced) */
     } zh_encoder_event_on_isr_t;
 
     /**

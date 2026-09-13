@@ -496,6 +496,7 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
     while (xQueueReceive(_queue_handle, &encoder_queue, portMAX_DELAY) == pdTRUE)
     {
         bool is_value_changed = false;
+        bool encoder_status = false;
         zh_encoder_handle_t *encoder_handle = encoder_queue.handle;
         switch (encoder_queue.watch_point_value)
         {
@@ -508,6 +509,7 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
                     encoder_handle->encoder_position = encoder_handle->encoder_max_value;
                 }
                 is_value_changed = true;
+                encoder_status = true;
             }
             break;
         case ZH_ENCODER_DIRECTION_CCW:
@@ -529,11 +531,12 @@ static void IRAM_ATTR _zh_encoder_isr_processing_task(void *pvParameter)
             is_value_changed = false;
             zh_encoder_event_on_isr_t encoder_data = {0};
             encoder_data.encoder_number = encoder_handle->encoder_number;
-            if (encoder_handle->encoder_position < 0 && encoder_handle->encoder_position > -1e-12)
+            if (fabsf(encoder_handle->encoder_position) < 1e-6f)
             {
-                encoder_handle->encoder_position = 0;
+                memset(&encoder_handle->encoder_position, 0, sizeof(float));
             }
             encoder_data.encoder_position = encoder_handle->encoder_position;
+            encoder_data.encoder_status = encoder_status;
             ZH_ERROR_CHECK_CONT(esp_event_post(ZH_ENCODER, ZH_ENCODER_EVENT, &encoder_data, sizeof(zh_encoder_event_on_isr_t), 1000 / portTICK_PERIOD_MS) == ESP_OK, ++_stats.event_post_error, "Encoder isr processing failed. Failed to post interrupt event.");
         }
         _stats.min_stack_size = (uint32_t)uxTaskGetStackHighWaterMark(NULL);
