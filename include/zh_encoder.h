@@ -152,6 +152,7 @@ extern "C"
      * @return ESP_OK on success
      * @return ESP_ERR_INVALID_ARG if config or handle is NULL, or parameters are invalid
      * @return ESP_ERR_INVALID_STATE if the encoder is already initialized
+     * @return ESP_ERR_NO_MEM if memory allocation fails
      * @return ESP_FAIL if resource allocation or peripheral initialization fails
      */
     esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_handle_t **handle);

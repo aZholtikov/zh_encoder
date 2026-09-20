@@ -179,6 +179,7 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     ZH_ERROR_CHECK(config != NULL && handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder initialization failed. Invalid argument.");
     ZH_ERROR_CHECK(*handle == NULL, ESP_ERR_INVALID_STATE, NULL, "Encoder initialization failed. Encoder is already initialized.");
     *handle = heap_caps_calloc(1, sizeof(zh_encoder_handle_t), MALLOC_CAP_8BIT);
+    ZH_ERROR_CHECK(*handle != NULL, ESP_ERR_NO_MEM, NULL, "Encoder initialization failed. Failed to allocate encoder handle.");
     ZH_ERROR_CHECK(_zh_encoder_validate_config(config, *handle) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Initial configuration check failed.");
     if (_vector == NULL)
     {
