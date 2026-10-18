@@ -1,19 +1,25 @@
 /**
  * @file zh_encoder.h
  *
- * @brief Rotary encoder driver for ESP-IDF using PCNT peripheral.
+ * @brief Rotary encoder driver for ESP-IDF using the PCNT peripheral.
  *
  * Provides a FreeRTOS-based driver for rotary encoders with optional
  * push-button support. Uses ESP-IDF PCNT peripheral for quadrature
  * decoding and esp_event for asynchronous event notification.
+ * Rotation counts are accumulated in a shared task, converted into
+ * configurable steps and clamped to the configured value range.
  *
  * Key features:
- * - Quadrature decoding via PCNT peripheral
+ * - Quadrature decoding via PCNT peripheral (ESP-IDF-style edge/level actions)
  * - Configurable min/max/step values with float precision
- * - Push-button support with debouncing
- * - Multiple simultaneous encoders (up to 8)
- * - Event-based notification (ISR context)
+ * - Configurable PCNT counts per encoder step (detent)
+ * - Push-button support with timer-based debouncing
+ * - Multiple simultaneous encoders (number is limited by available PCNT units and GPIOs)
+ * - Event-based notification (rotation and button events are posted from task context)
  * - Error statistics tracking
+ *
+ * @note All public functions require a valid handle pointer obtained through zh_encoder_init().
+ * @note Rotation and button events are posted from task context (shared processing task and timer callback).
  */
 
 #pragma once
@@ -37,12 +43,13 @@
         .a_gpio_number = GPIO_NUM_MAX,          \
         .b_gpio_number = GPIO_NUM_MAX,          \
         .s_gpio_number = GPIO_NUM_MAX,          \
-        .s_gpio_debounce_time = 10,             \
+        .s_gpio_debounce_time = 15000,          \
         .pullup = true,                         \
         .encoder_min_value = -10,               \
         .encoder_max_value = 10,                \
         .encoder_step = 1,                      \
-        .encoder_number = 0}
+        .pcnt_counts_per_step = 4,              \
+        .encoder_number = 1}
 
 #ifdef __cplusplus
 extern "C"
@@ -56,56 +63,60 @@ extern "C"
 
     /**
      * @brief Opaque encoder handle.
-     *
-     * Opaque pointer to the internal encoder structure.
-     * Used to reference a specific encoder instance across all API functions.
      */
     typedef struct _zh_encoder_handle_t zh_encoder_handle_t;
 
     /**
      * @brief Configuration structure for encoder initialization.
      *
-     * Contains all parameters required to configure a rotary encoder,
-     * including GPIO pins, value range, step size, and task settings.
+     * Holds all parameters required to create an encoder: GPIO assignments,
+     * value range, step size, shared task settings and a unique encoder number.
+     * Use ZH_ENCODER_INIT_CONFIG_DEFAULT() to obtain a valid starting configuration.
      *
      * @note All GPIO numbers must be valid ESP-IDF GPIO numbers or GPIO_NUM_MAX (disabled).
      * @note encoder_number must be unique across all initialized encoders.
+     * @note Only the first initialized encoder's task_priority, stack_size and
+     *       queue_size take effect (shared processing task/queue).
      */
     typedef struct
     {
-        float encoder_step;            /*!< Encoder step. @note Must be greater than 0 */
+        float encoder_step;            /*!< Encoder step per detent. @note Must be greater than 0 */
         float encoder_min_value;       /*!< Encoder min value. @note Must be less than encoder_max_value */
         float encoder_max_value;       /*!< Encoder max value. @note Must be greater than encoder_min_value */
         gpio_num_t a_gpio_number;      /*!< Encoder A GPIO number */
         gpio_num_t b_gpio_number;      /*!< Encoder B GPIO number */
         gpio_num_t s_gpio_number;      /*!< Encoder button GPIO number */
-        uint16_t s_gpio_debounce_time; /*!< Encoder button debounce_time. @note In microseconds */
-        uint16_t stack_size;           /*!< Stack size for task for the encoder isr processing processing. @note The minimum size is configMINIMAL_STACK_SIZE */
-        uint8_t task_priority;         /*!< Task priority for the encoder isr processing. @note Minimum value is 1 */
-        uint8_t queue_size;            /*!< Queue size for task for the encoder processing. @note Minimum value is 1 */
+        uint16_t s_gpio_debounce_time; /*!< Encoder button debounce time in microseconds. Rounded up to whole milliseconds for the debounce timer */
+        uint16_t stack_size;           /*!< Stack size for the shared processing task. @note Minimum configMINIMAL_STACK_SIZE */
+        uint8_t task_priority;         /*!< Task priority for the shared processing task. @note Minimum value is 1 */
+        uint8_t queue_size;            /*!< Queue size for the shared processing queue. @note Minimum value is 1 */
         uint8_t encoder_number;        /*!< Unique encoder number. @note Must be greater than 0 */
-        bool pullup;                   /*!< Pullup GPIO enable/disable */
+        uint8_t pcnt_counts_per_step;  /*!< PCNT counts per encoder step (detent). @note Must be greater than 0. Typically 4 for EC11 with proper quadrature */
+        bool pullup;                   /*!< Pullup GPIO enable/disable for encoder A/B and button */
     } zh_encoder_init_config_t;
 
     /**
      * @brief Structure for encoder error statistics.
      *
-     * Tracks runtime errors and task health metrics for diagnostic purposes.
+     * Collects error counters and task health metrics reported by the shared
+     * processing task and the interrupt handlers.
      */
     typedef struct
     {
-        uint32_t event_post_error;     /*!< Number of event post error */
-        uint32_t queue_overflow_error; /*!< Number of queue overflow error */
-        uint32_t min_stack_size;       /*!< Minimum free stack size */
+        uint32_t event_post_error;     /*!< Number of event post errors */
+        uint32_t queue_overflow_error; /*!< Number of queue overflow errors */
+        uint32_t min_stack_size;       /*!< Minimum free stack size (watermark) */
     } zh_encoder_stats_t;
 
     /**
      * @brief Encoder event identifiers for esp_event base.
+     *
+     * Used as the event ID when registering handlers on the ZH_ENCODER event base.
      */
     typedef enum
     {
-        ZH_BUTTON_EVENT, /*!< Encoder push-button interrupt event */
-        ZH_ENCODER_EVENT /*!< Encoder rotation interrupt event */
+        ZH_BUTTON_EVENT, /*!< Encoder push-button event */
+        ZH_ENCODER_EVENT /*!< Encoder rotation event */
     } zh_encoder_event_id_t;
 
     ESP_EVENT_DECLARE_BASE(ZH_ENCODER);
@@ -113,7 +124,7 @@ extern "C"
     /**
      * @brief Event data structure for encoder rotation events.
      *
-     * Posted from ISR context via esp_event_isr_post when encoder position changes.
+     * Posted from the shared processing task via esp_event_post() (not from ISR).
      *
      * @note Should be used with ZH_ENCODER event base and ZH_ENCODER_EVENT event ID.
      */
@@ -121,13 +132,14 @@ extern "C"
     {
         float encoder_position; /*!< Encoder current position */
         uint8_t encoder_number; /*!< Encoder unique number */
-        bool encoder_status;    /*!< Encoder status (true when position increased, false when position reduced) */
+        bool encoder_status;    /*!< true if position increased, false if reduced */
     } zh_encoder_event_on_isr_t;
 
     /**
      * @brief Event data structure for encoder button events.
      *
-     * Posted from ISR context via esp_event_isr_post when encoder button state changes.
+     * Posted from the button debounce timer callback via esp_event_post() when the
+     * debounced button state actually changed.
      *
      * @note Should be used with ZH_ENCODER event base and ZH_BUTTON_EVENT event ID.
      */
@@ -160,14 +172,14 @@ extern "C"
     /**
      * @brief Deinitialize encoder and release all resources.
      *
-     * Stops the PCNT peripheral, removes GPIO ISR handlers, and frees allocated memory.
-     * If this is the last encoder, the shared processing task and queue are also deleted.
+     * Stops the PCNT peripheral, removes GPIO ISR handlers and the button debounce timer,
+     * and frees allocated memory. If this is the last encoder, the shared processing task
+     * and queue are also deleted.
      *
      * @param[in,out] handle Pointer to unique encoder handle (must not be NULL)
      *
      * @return ESP_OK on success
      * @return ESP_ERR_INVALID_ARG if handle is NULL or points to an uninitialized encoder
-     * @return ESP_FAIL if PCNT or GPIO cleanup fails
      */
     esp_err_t zh_encoder_deinit(zh_encoder_handle_t **handle);
 
@@ -186,6 +198,7 @@ extern "C"
      *
      * @return ESP_OK on success
      * @return ESP_ERR_INVALID_ARG if handle is NULL, or parameters are invalid
+     * @return ESP_FAIL if PCNT count clear fails
      */
     esp_err_t zh_encoder_reinit(zh_encoder_handle_t **handle, float min, float max, float step);
 
@@ -197,6 +210,7 @@ extern "C"
      *
      * @return ESP_OK on success
      * @return ESP_ERR_INVALID_ARG if handle is NULL, or parameters are invalid
+     * @return ESP_FAIL if PCNT count clear fails
      */
     esp_err_t zh_encoder_set(zh_encoder_handle_t **handle, float position);
 
@@ -220,6 +234,7 @@ extern "C"
      *
      * @return ESP_OK on success
      * @return ESP_ERR_INVALID_ARG if handle is NULL
+     * @return ESP_FAIL if PCNT count clear fails
      */
     esp_err_t zh_encoder_reset(zh_encoder_handle_t **handle);
 
@@ -237,6 +252,8 @@ extern "C"
      * @brief Reset all error statistics to zero.
      *
      * Clears error counters and stack watermarks.
+     *
+     * @return No return value
      */
     void zh_encoder_reset_stats(void);
 
