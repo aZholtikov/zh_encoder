@@ -13,6 +13,14 @@
         return err;                                  \
     }
 
+#define ZH_ERROR_CHECK_VOID(cond, cleanup, msg, ...) \
+    if (!(cond))                                     \
+    {                                                \
+        ZH_LOGE(msg, ESP_FAIL, ##__VA_ARGS__);       \
+        cleanup;                                     \
+        return;                                      \
+    }
+
 #define ZH_ERROR_CHECK_CONT(cond, cleanup, msg, ...) \
     if (!(cond))                                     \
     {                                                \
@@ -147,6 +155,15 @@ static esp_err_t _zh_encoder_resources_init(const zh_encoder_init_config_t *conf
 static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config);
 
 /**
+ * @brief Roll back shared resources (queue, task) if the failed init was
+ *        the first (and only) device.
+ *
+ * Must be called BEFORE zh_vector_delete_back(&_vector) — otherwise the
+ * vector size will no longer reflect "first device".
+ */
+static void _zh_encoder_rollback_task_and_resources(void);
+
+/**
  * @brief PCNT watch-point interrupt handler.
  *
  * Reads and clears the unit count, then posts a queue message to the shared processing
@@ -219,11 +236,11 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
     }
     ZH_ERROR_CHECK(zh_vector_push_back(&_vector, &config->encoder_number) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Failed to add vector data.");
     ZH_ERROR_CHECK(_zh_encoder_resources_init(config) == ESP_OK, ESP_FAIL, zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Resources initialization failed.");
-    ZH_ERROR_CHECK(_zh_encoder_task_init(config) == ESP_OK, ESP_FAIL,
-                   zh_vector_delete_back(&_vector);
+    ZH_ERROR_CHECK(_zh_encoder_task_init(config) == ESP_OK, ESP_FAIL, _zh_encoder_rollback_task_and_resources();
+                   {ZH_ERROR_CHECK_CONT(zh_vector_delete_back(&_vector) == ESP_OK, NULL, "Failed delete vector data.")};
                    heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Processing task initialization failed.");
-    ZH_ERROR_CHECK(_zh_encoder_pcnt_init(config, *handle) == ESP_OK, ESP_FAIL,
-                   zh_vector_delete_back(&_vector);
+    ZH_ERROR_CHECK(_zh_encoder_pcnt_init(config, *handle) == ESP_OK, ESP_FAIL, _zh_encoder_rollback_task_and_resources();
+                   {ZH_ERROR_CHECK_CONT(zh_vector_delete_back(&_vector) == ESP_OK, NULL, "Failed delete vector data.")};
                    heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. PCNT initialization failed.");
     ZH_ERROR_CHECK(_zh_encoder_gpio_init(config, *handle) == ESP_OK, ESP_FAIL,
                    {ZH_ERROR_CHECK_CONT(pcnt_unit_stop((*handle)->pcnt_unit_handle) == ESP_OK, NULL, "PCNT unit stop fail.")};
@@ -231,7 +248,9 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
                    {ZH_ERROR_CHECK_CONT(pcnt_del_channel((*handle)->pcnt_channel_a_handle) == ESP_OK, NULL, "PCNT delete channel fail.")};
                    {ZH_ERROR_CHECK_CONT(pcnt_del_channel((*handle)->pcnt_channel_b_handle) == ESP_OK, NULL, "PCNT delete channel fail.")};
                    {ZH_ERROR_CHECK_CONT(pcnt_del_unit((*handle)->pcnt_unit_handle) == ESP_OK, NULL, "PCNT delete unit fail.")};
-                   zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. GPIO initialization failed.");
+                   _zh_encoder_rollback_task_and_resources();
+                   {ZH_ERROR_CHECK_CONT(zh_vector_delete_back(&_vector) == ESP_OK, NULL, "Failed delete vector data.")};
+                   heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. GPIO initialization failed.");
     if (_stats.min_stack_size == 0)
     {
         _stats.min_stack_size = config->stack_size;
@@ -532,6 +551,28 @@ static esp_err_t _zh_encoder_task_init(const zh_encoder_init_config_t *config)
                        ESP_FAIL, NULL, "Failed to create isr processing task.");
     }
     return ESP_OK;
+}
+
+static void _zh_encoder_rollback_task_and_resources(void)
+{
+    if (_vector != NULL)
+    {
+        uint16_t vector_size = 0;
+        ZH_ERROR_CHECK_VOID(zh_vector_get_size(&_vector, &vector_size) == ESP_OK, NULL, "Failed to get vector size.");
+        if (vector_size == 1)
+        {
+            if (zh_encoder != NULL)
+            {
+                vTaskDelete(zh_encoder);
+                zh_encoder = NULL;
+            }
+            if (_queue_handle != NULL)
+            {
+                vQueueDelete(_queue_handle);
+                _queue_handle = NULL;
+            }
+        }
+    }
 }
 
 static bool _zh_encoder_isr_handler(pcnt_unit_handle_t unit, const pcnt_watch_event_data_t *edata, void *user_ctx)
