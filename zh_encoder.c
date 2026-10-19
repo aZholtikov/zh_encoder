@@ -235,7 +235,9 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
         ZH_ERROR_CHECK(zh_vector_init(&_vector, sizeof(uint8_t)) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Failed to create vector.");
     }
     ZH_ERROR_CHECK(zh_vector_push_back(&_vector, &config->encoder_number) == ESP_OK, ESP_FAIL, heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Failed to add vector data.");
-    ZH_ERROR_CHECK(_zh_encoder_resources_init(config) == ESP_OK, ESP_FAIL, zh_vector_delete_back(&_vector); heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Resources initialization failed.");
+    ZH_ERROR_CHECK(_zh_encoder_resources_init(config) == ESP_OK, ESP_FAIL,
+                   {ZH_ERROR_CHECK_CONT(zh_vector_delete_back(&_vector) == ESP_OK, NULL, "Failed delete vector data.")};
+                   heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Resources initialization failed.");
     ZH_ERROR_CHECK(_zh_encoder_task_init(config) == ESP_OK, ESP_FAIL, _zh_encoder_rollback_task_and_resources();
                    {ZH_ERROR_CHECK_CONT(zh_vector_delete_back(&_vector) == ESP_OK, NULL, "Failed delete vector data.")};
                    heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. Processing task initialization failed.");
