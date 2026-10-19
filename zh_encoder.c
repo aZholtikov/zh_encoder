@@ -55,6 +55,7 @@ struct _zh_encoder_handle_t
     pcnt_channel_handle_t pcnt_channel_a_handle; /*!< PCNT channel A handle */
     pcnt_channel_handle_t pcnt_channel_b_handle; /*!< PCNT channel B handle */
     TimerHandle_t button_timer;                  /*!< One-shot debounce timer for the button */
+    portMUX_TYPE lock;                           /*!< Spinlock protecting fields accessed from ISR and task context */
 };
 
 /**
@@ -75,7 +76,6 @@ typedef struct
 
 TaskHandle_t zh_encoder = NULL;
 static QueueHandle_t _queue_handle = NULL;
-static portMUX_TYPE _spinlock = portMUX_INITIALIZER_UNLOCKED;
 
 static zh_encoder_stats_t _stats = {0};
 static zh_vector_t *_vector = NULL;
@@ -251,6 +251,7 @@ esp_err_t zh_encoder_init(const zh_encoder_init_config_t *config, zh_encoder_han
                    _zh_encoder_rollback_task_and_resources();
                    {ZH_ERROR_CHECK_CONT(zh_vector_delete_back(&_vector) == ESP_OK, NULL, "Failed delete vector data.")};
                    heap_caps_free(*handle); *handle = NULL, "Encoder initialization failed. GPIO initialization failed.");
+    portMUX_INITIALIZE(&(*handle)->lock);
     if (_stats.min_stack_size == 0)
     {
         _stats.min_stack_size = config->stack_size;
@@ -312,13 +313,13 @@ esp_err_t zh_encoder_reinit(zh_encoder_handle_t **handle, float min, float max, 
     ZH_ERROR_CHECK(handle != NULL && *handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid argument.");
     ZH_ERROR_CHECK(max > min, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid encoder min/max value.");
     ZH_ERROR_CHECK(step > 0, ESP_ERR_INVALID_ARG, NULL, "Encoder reinitialization failed. Invalid encoder step.");
-    taskENTER_CRITICAL(&_spinlock);
+    taskENTER_CRITICAL(&(*handle)->lock);
     (*handle)->encoder_min_value = min;
     (*handle)->encoder_max_value = max;
     (*handle)->encoder_step = step;
     (*handle)->encoder_position = ((*handle)->encoder_min_value + (*handle)->encoder_max_value) / 2;
     (*handle)->count_accumulator = 0;
-    taskEXIT_CRITICAL(&_spinlock);
+    taskEXIT_CRITICAL(&(*handle)->lock);
     ZH_ERROR_CHECK(pcnt_unit_clear_count((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, NULL, "Encoder reinitialization failed. Internal error.");
     ZH_LOGI("Encoder reinitialization completed successfully.");
     return ESP_OK;
@@ -328,11 +329,11 @@ esp_err_t zh_encoder_set(zh_encoder_handle_t **handle, float position)
 {
     ZH_LOGI("Encoder set position started.");
     ZH_ERROR_CHECK(handle != NULL && *handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder set position failed. Invalid argument.");
-    taskENTER_CRITICAL(&_spinlock);
-    ZH_ERROR_CHECK(position <= (*handle)->encoder_max_value && position >= (*handle)->encoder_min_value, ESP_ERR_INVALID_ARG, taskEXIT_CRITICAL(&_spinlock), "Encoder set position failed. Invalid argument.");
+    taskENTER_CRITICAL(&(*handle)->lock);
+    ZH_ERROR_CHECK(position <= (*handle)->encoder_max_value && position >= (*handle)->encoder_min_value, ESP_ERR_INVALID_ARG, taskEXIT_CRITICAL(&(*handle)->lock), "Encoder set position failed. Invalid argument.");
     (*handle)->encoder_position = position;
     (*handle)->count_accumulator = 0;
-    taskEXIT_CRITICAL(&_spinlock);
+    taskEXIT_CRITICAL(&(*handle)->lock);
     ZH_ERROR_CHECK(pcnt_unit_clear_count((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, NULL, "Encoder set position failed. Internal error.");
     ZH_LOGI("Encoder set position completed successfully.");
     return ESP_OK;
@@ -342,9 +343,9 @@ esp_err_t zh_encoder_get(zh_encoder_handle_t **handle, float *position)
 {
     ZH_LOGI("Encoder get position started.");
     ZH_ERROR_CHECK(handle != NULL && *handle != NULL && position != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder get position failed. Invalid argument.");
-    taskENTER_CRITICAL(&_spinlock);
+    taskENTER_CRITICAL(&(*handle)->lock);
     *position = (*handle)->encoder_position;
-    taskEXIT_CRITICAL(&_spinlock);
+    taskEXIT_CRITICAL(&(*handle)->lock);
     ZH_LOGI("Encoder get position completed successfully.");
     return ESP_OK;
 }
@@ -353,10 +354,10 @@ esp_err_t zh_encoder_reset(zh_encoder_handle_t **handle)
 {
     ZH_LOGI("Encoder reset started.");
     ZH_ERROR_CHECK(handle != NULL && *handle != NULL, ESP_ERR_INVALID_ARG, NULL, "Encoder reset failed. Invalid argument.");
-    taskENTER_CRITICAL(&_spinlock);
+    taskENTER_CRITICAL(&(*handle)->lock);
     (*handle)->encoder_position = ((*handle)->encoder_min_value + (*handle)->encoder_max_value) / 2;
     (*handle)->count_accumulator = 0;
-    taskEXIT_CRITICAL(&_spinlock);
+    taskEXIT_CRITICAL(&(*handle)->lock);
     ZH_ERROR_CHECK(pcnt_unit_clear_count((*handle)->pcnt_unit_handle) == ESP_OK, ESP_FAIL, NULL, "Encoder reset failed. Internal error.");
     ZH_LOGI("Encoder reset completed successfully.");
     return ESP_OK;
@@ -581,18 +582,18 @@ static bool _zh_encoder_isr_handler(pcnt_unit_handle_t unit, const pcnt_watch_ev
     zh_encoder_handle_t *encoder_handle = (zh_encoder_handle_t *)user_ctx;
     zh_encoder_queue_t encoder_queue = {0};
     int count = 0;
-    taskENTER_CRITICAL_ISR(&_spinlock);
+    taskENTER_CRITICAL_ISR(&encoder_handle->lock);
     if (pcnt_unit_get_count(unit, &count) != ESP_OK)
     {
-        taskEXIT_CRITICAL_ISR(&_spinlock);
+        taskEXIT_CRITICAL_ISR(&encoder_handle->lock);
         return false;
     }
     if (pcnt_unit_clear_count(unit) != ESP_OK)
     {
-        taskEXIT_CRITICAL_ISR(&_spinlock);
+        taskEXIT_CRITICAL_ISR(&encoder_handle->lock);
         return false;
     }
-    taskEXIT_CRITICAL_ISR(&_spinlock);
+    taskEXIT_CRITICAL_ISR(&encoder_handle->lock);
     encoder_queue.count = count;
     encoder_queue.handle = encoder_handle;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -618,7 +619,7 @@ static void _zh_encoder_isr_processing_task(void *pvParameter)
         bool encoder_status = false;
         float encoder_position = 0.0;
         uint8_t encoder_number = 0;
-        taskENTER_CRITICAL(&_spinlock);
+        taskENTER_CRITICAL(&handle->lock);
         int32_t total = handle->count_accumulator + encoder_queue.count;
         int32_t full_steps = total / (int32_t)handle->pcnt_counts_per_step;
         handle->count_accumulator = total - full_steps * (int32_t)handle->pcnt_counts_per_step;
@@ -646,7 +647,7 @@ static void _zh_encoder_isr_processing_task(void *pvParameter)
                 encoder_number = handle->encoder_number;
             }
         }
-        taskEXIT_CRITICAL(&_spinlock);
+        taskEXIT_CRITICAL(&handle->lock);
         if (position_changed == true)
         {
             zh_encoder_event_on_isr_t encoder_data = {0};
